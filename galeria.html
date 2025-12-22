@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galería</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="galeria-style.css"> </head>
+<body>
+
+    <nav class="top-bar">
+        <a href="index.html" class="back-btn">VOLVER</a>
+        <div class="counter" id="photo-counter">01 / 05</div>
+    </nav>
+
+    <div class="carousel-container">
+        
+        <div class="slide active">
+            <img src="./assets/img/1.jpg" alt="Foto 1">
+            <div class="caption">RETRATO</div>
+        </div>
+        
+        <div class="slide">
+            <img src="./assets/img/2.jpg" alt="Foto 2">
+            <div class="caption">RETRATO</div>
+        </div>
+        
+        <div class="slide">
+            <img src="./assets/img/3.jpg" alt="Foto 3">
+            <div class="caption">DOCUMENTAL NOCTURNO</div>
+        </div>
+        
+        <div class="slide">
+            <img src="./assets/img/4.jpg" alt="Foto 4">
+            <div class="caption">DOBLE EXPOSICIÓN</div>
+        </div>
+
+        <div class="slide">
+            <img src="./assets/img/5.jpg" alt="Foto 4">
+            <div class="caption">CONCIERTO</div>
+        </div>
+
+         <div class="slide">
+            <img src="./assets/img/6.jpg" alt="Foto 4">
+            <div class="caption">B/N</div>
+        </div>
+        
+        <div class="slide">
+            <img src="./assets/img/7.jpg" alt="Foto 4">
+            <div class="caption">ACCIÓN</div>
+        </div>
+
+         <div class="slide">
+            <img src="./assets/img/8.jpg" alt="Foto 4">
+            <div class="caption">DOBLE EXPOSICIÓN</div>
+        </div>
+
+         <div class="slide">
+            <img src="./assets/img/9.jpg" alt="Foto 4">
+            <div class="caption">NOCTURNO</div>
+        </div>
+
+         <div class="slide">
+            <img src="./assets/img/10.jpg" alt="Foto 4">
+            <div class="caption">B/N</div>
+        </div>
+
+        <button class="nav-arrow prev" onclick="changeSlide(-1)">&#10094;</button>
+        <button class="nav-arrow next" onclick="changeSlide(1)">&#10095;</button>
+
+    </div>
+
+    <script src="galeria.js"></script>
+
+</body>
+</html>

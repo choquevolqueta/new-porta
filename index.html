@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mi Portafolio Audiovisual</title>
+    <link rel="stylesheet" href="style.css">
+    
+</head>
+<body>
+
+    <div id="splash-screen">
+        <video id="portfolio-video" autoplay loop muted playsinline>
+            <source src="src/splash.mp4" type="video/mp4">
+            Tu navegador no soporta el tag de video.
+        </video>
+        <div id="click-overlay">
+            <h1>Ver Portafolio</h1>
+            <p>(Haz clic en cualquier lugar)</p>
+        </div>
+    </div>
+
+    <div id="main-content">
+    <header class="grid-item">
+        <h2>ALEXANDER CORTEZ</h2>
+    </header>
+    
+   <section class="grid-item project-1" onclick="location.href='galeria.html'" style="cursor: pointer;">
+        <h3>FOTOGRAFÍA</h3>
+    </section>
+
+    <section class="grid-item project-2" onclick="location.href='videos.html'" style="cursor: pointer;">
+        <h3>VIDEOS</h3>
+    </section>
+
+    <section class="grid-item project-3" style="position: relative; cursor: pointer;">
+    
+    <h3>PUBLICIDAD</h3>
+    <p style="font-size: 0.7rem; margin-top: 10px;">[DESCARGAR PDF]</p>
+    
+    <a href="assets/portafolio.pdf" 
+       download="Portafolio.pdf" 
+       style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;">
+    </a>
+
+</section>
+
+    <footer>
+        </footer>
+</div>
+
+    <script src="app.js"></script>
+</body>
+</html>

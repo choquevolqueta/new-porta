@@ -1,0 +1,179 @@
+/* ================================================= */
+/* 1. TIPOGRAFÍA (FUENTE BRUTALISTA)                 */
+/* ================================================= */
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap');
+
+/* ================================================= */
+/* 2. ESTILOS GENERALES (FONDO NEGRO)                */
+/* ================================================= */
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #000000; /* Negro Absoluto */
+    color: #ffffff;            /* Texto Blanco */
+    font-family: 'Archivo Black', sans-serif; 
+    text-transform: uppercase; 
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ================================================= */
+/* 3. SPLASH SCREEN (RESTAURADO)                     */
+/* ================================================= */
+#splash-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: 9999; /* Z-index muy alto para tapar todo lo demás */
+    cursor: pointer;
+    background-color: #000; /* Fondo negro por si el video tarda en cargar */
+    transition: opacity 1s ease-out; 
+}
+
+#portfolio-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#click-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.5); /* Fondo semitransparente para leer texto */
+    padding: 20px 40px;
+    border-radius: 0; /* Quitamos bordes redondeados para que coincida con el estilo */
+    border: 2px solid white; /* Borde blanco estilo brutalista */
+    z-index: 10001; 
+}
+
+/* ================================================= */
+/* 4. LAYOUT PRINCIPAL (GRID)                        */
+/* ================================================= */
+#main-content {
+    opacity: 0; /* JS debe cambiar esto a 1 */
+    transition: opacity 0.5s ease-out;
+    
+    min-height: 100vh;
+    width: 100%; 
+    
+    display: grid;
+    /* MÓVIL: 1 Columna */
+    grid-template-areas:
+        "header"
+        "project-1"
+        "project-2"
+        "project-3"
+        "footer";
+    grid-template-columns: 1fr;
+    grid-template-rows: min-content min-content min-content min-content min-content;
+    
+    gap: 30px; 
+    padding: 30px; 
+    box-sizing: border-box;
+}
+
+/* ================================================= */
+/* 5. HEADER                                         */
+/* ================================================= */
+header {
+    grid-area: header; 
+    padding: 20px 0;
+    text-align: center;
+}
+
+header h1 {
+    font-size: clamp(4rem, 15vw, 12rem); 
+    line-height: 0.8; 
+    margin: 0;
+    letter-spacing: -4px;
+}
+
+footer {
+    grid-area: footer;
+    padding: 40px 0;
+    text-align: center;
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+    border-top: 5px solid white;
+}
+
+/* ================================================= */
+/* 6. PROYECTOS (BLOQUES BLANCOS + SOMBRA ROJA)      */
+/* ================================================= */
+
+.project-1, .project-2, .project-3 {
+    background-color: #ffffff; 
+    color: #000000;            
+    
+    padding: 20px;
+    
+    /* Sin bordes */
+    border: none;
+    border-radius: 0;
+    outline: none;
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    
+    min-height: 300px; 
+    cursor: pointer;
+    
+    /* Transición rápida */
+    transition: all 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    
+    /* Inicialmente sin sombra */
+    box-shadow: 0 0 0 transparent;
+}
+
+.project-1 h2, .project-2 h2, .project-3 h2 {
+    font-size: clamp(3.5rem, 10vw, 7rem); 
+    margin: 0;
+    line-height: 0.9;
+    pointer-events: none; 
+}
+
+/* EFECTO HOVER */
+.project-1:hover, .project-2:hover, .project-3:hover {
+    transform: translate(-15px, -15px); /* Se mueve arriba/izquierda */
+    box-shadow: 15px 15px 0 #FF0000;    /* Sombra sólida roja abajo/derecha */
+}
+
+
+/* ================================================= */
+/* 7. MEDIA QUERY (ESCRITORIO)                       */
+/* ================================================= */
+@media (min-width: 1024px) {
+    #main-content {
+        /* 3 Columnas */
+        grid-template-areas:
+            "header header header"
+            "project-1 project-2 project-3"
+            "footer footer footer";
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-rows: auto 1fr auto;
+        
+        gap: 40px; 
+        padding: 60px;
+        align-content: center;
+    }
+
+    .project-1, .project-2, .project-3 {
+        aspect-ratio: 1 / 1;
+        min-height: auto;
+        height: auto;
+    }
+    
+    /* Hover más exagerado en pantalla grande */
+    .project-1:hover, .project-2:hover, .project-3:hover {
+        transform: translate(-20px, -20px);
+        box-shadow: 20px 20px 0 #FF0000; 
+    }
+}
