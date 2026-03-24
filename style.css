@@ -61,6 +61,7 @@ body {
     
     min-height: 100vh;
     width: 100%; 
+    gap: clamp(15px, 5vh, 80px);
     
     display: grid;
     /* MÓVIL: 1 Columna */
@@ -124,6 +125,7 @@ footer {
     text-align: center;
     
     min-height: 300px; 
+    min-height: clamp(150px, 25vh, 300px);
     cursor: pointer;
     
     /* Transición rápida */
