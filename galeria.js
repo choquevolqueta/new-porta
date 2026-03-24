@@ -32,7 +32,6 @@ function showSlides(n) {
     slides[n].classList.add('active');
 
     // 3. Actualizar el contador de texto (Ej: 02 / 05)
-    // Agregamos un '0' al principio si es menor a 10 para estética
     let current = (n + 1).toString().padStart(2, '0');
     let total = slides.length.toString().padStart(2, '0');
     
@@ -45,5 +44,48 @@ document.addEventListener('keydown', function(event) {
         changeSlide(-1);
     } else if (event.key === "ArrowRight") {
         changeSlide(1);
+    }
+    // Cerrar lightbox con ESC
+    if (event.key === "Escape") {
+        closeLightbox();
+    }
+});
+
+// ─────────────────────────────────────────
+// LIGHTBOX — Solo activo en escritorio (768px+)
+// ─────────────────────────────────────────
+
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+
+function isDesktop() {
+    return window.matchMedia('(min-width: 768px)').matches;
+}
+
+// Agregar click a cada imagen del carrusel
+slides.forEach(slide => {
+    const img = slide.querySelector('img');
+    img.addEventListener('click', function () {
+        if (!isDesktop()) return; // En móvil no hace nada
+        openLightbox(this.src, this.alt);
+    });
+});
+
+function openLightbox(src, alt) {
+    lightboxImg.src = src;
+    lightboxImg.alt = alt;
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    lightbox.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// Cerrar al hacer click fuera de la imagen
+lightbox.addEventListener('click', function(e) {
+    if (e.target === lightbox) {
+        closeLightbox();
     }
 });
