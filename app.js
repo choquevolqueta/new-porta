@@ -1,4 +1,24 @@
 document.addEventListener("DOMContentLoaded", function() {
+
+    // Bio toggle
+    const bioToggle = document.getElementById('bio-toggle');
+    const bioPanel = document.getElementById('bio-panel');
+
+    function toggleBio() {
+        const isOpen = bioPanel.classList.toggle('open');
+        bioToggle.classList.toggle('open', isOpen);
+        bioToggle.setAttribute('aria-expanded', isOpen);
+        bioPanel.setAttribute('aria-hidden', !isOpen);
+    }
+
+    bioToggle.addEventListener('click', toggleBio);
+    bioToggle.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleBio();
+        }
+    });
+
     
     // 1. Seleccionamos los elementos
     const splashScreen = document.getElementById('splash-screen');

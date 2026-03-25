@@ -2,9 +2,15 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Mi Portafolio Audiovisual</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Portafolio audiovisual de Alexander Cortez — fotografía, video y publicidad.">
+    <meta property="og:title" content="Alexander Cortez — Portafolio Audiovisual">
+    <meta property="og:description" content="Fotografía, video y publicidad por Alexander Cortez.">
+    <meta property="og:type" content="website">
+    <title>Alexander Cortez — Portafolio Audiovisual</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    
 </head>
 <body>
 
@@ -21,31 +27,44 @@
 
     <div id="main-content">
     <header class="grid-item">
-        <h2>ALEXANDER CORTEZ</h2>
+        <div class="header-title" id="bio-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="bio-panel">
+            <h2>ALEXANDER CORTEZ</h2>
+            <span class="bio-indicator" aria-hidden="true">+</span>
+        </div>
+        <div class="bio-panel" id="bio-panel" aria-hidden="true">
+            <div class="bio-content">
+                <p class="bio-role">PUBLICISTA DE PROFESIÓN, AUDIOVISUAL DE CORAZÓN</p>
+                <p class="bio-text">
+                    Nacido en Bolivia, radicado en Santiago hace 8 meses. Me especializo en generación de videos mediante IA y fotografía de retrato — aunque, escucha bien: puedo armar hasta páginas web y agentes automatizados de ventas si me dan el incentivo adecuado.
+                </p>
+                <p class="bio-location">— SANTIAGO, CHILE</p>
+            </div>
+        </div>
     </header>
     
-   <section class="grid-item project-1" onclick="location.href='galeria.html'" style="cursor: pointer;">
+   <section class="grid-item project-1" style="position: relative;">
         <h3>FOTOGRAFÍA</h3>
+        <a href="galeria.html" aria-label="Ver galería de fotografía" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></a>
     </section>
 
-    <section class="grid-item project-2" onclick="location.href='videos.html'" style="cursor: pointer;">
+    <section class="grid-item project-2" style="position: relative;">
         <h3>VIDEOS</h3>
+        <a href="videos.html" aria-label="Ver videos" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></a>
     </section>
 
-    <section class="grid-item project-3" style="position: relative; cursor: pointer;">
-    
-    <h3>PUBLICIDAD</h3>
-    <p style="font-size: 0.7rem; margin-top: 10px;">[DESCARGAR PDF]</p>
-    
-    <a href="assets/portafolio.pdf" 
-       download="Portafolio.pdf" 
-       style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;">
-    </a>
-
-</section>
+    <section class="grid-item project-3" style="position: relative;">
+        <h3>PUBLICIDAD</h3>
+        <p style="font-size: 0.7rem; margin-top: 10px;">[DESCARGAR PDF]</p>
+        <a href="assets/portafolio.pdf" download="Portafolio.pdf" aria-label="Descargar portafolio de publicidad en PDF" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></a>
+    </section>
 
     <footer>
-        </footer>
+        <div class="social-links">
+            <a href="https://www.instagram.com/bot_hindu/" target="_blank" rel="noopener noreferrer">INSTAGRAM</a>
+            <a href="https://www.linkedin.com/in/alexander-cortez-0451782a2" target="_blank" rel="noopener noreferrer">LINKEDIN</a>
+        </div>
+        <p class="copyright">© 2026 ALEXANDER CORTEZ</p>
+    </footer>
 </div>
 
     <script src="app.js"></script>
