@@ -6,13 +6,18 @@
 /* ================================================= */
 /* 2. ESTILOS GENERALES (FONDO NEGRO)                */
 /* ================================================= */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
     padding: 0;
+    overflow-x: hidden;
     background-color: #000000; /* Negro Absoluto */
     color: #ffffff;            /* Texto Blanco */
-    font-family: 'Archivo Black', sans-serif; 
-    text-transform: uppercase; 
+    font-family: 'Archivo Black', sans-serif;
+    text-transform: uppercase;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -58,11 +63,10 @@ body {
 #main-content {
     opacity: 0; /* JS debe cambiar esto a 1 */
     transition: opacity 0.5s ease-out;
-    
+
     min-height: 100vh;
-    width: 100%; 
-    gap: clamp(15px, 5vh, 80px);
-    
+    width: 100%;
+
     display: grid;
     /* MÓVIL: 1 Columna */
     grid-template-areas:
@@ -71,37 +75,134 @@ body {
         "project-2"
         "project-3"
         "footer";
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: min-content min-content min-content min-content min-content;
-    
-    gap: 30px; 
-    padding: 30px; 
+
+    gap: 30px;
+    padding: 30px;
     box-sizing: border-box;
+}
+
+#main-content > * {
+    min-width: 0;
 }
 
 /* ================================================= */
 /* 5. HEADER                                         */
 /* ================================================= */
 header {
-    grid-area: header; 
+    grid-area: header;
     padding: 20px 0;
     text-align: center;
 }
 
-header h1 {
-    font-size: clamp(4rem, 15vw, 12rem); 
-    line-height: 0.8; 
+.header-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.header-title:focus {
+    outline: 2px solid #FF0000;
+    outline-offset: 4px;
+}
+
+header h2 {
+    font-size: clamp(2.5rem, 10vw, 10rem);
+    line-height: 0.9;
     margin: 0;
-    letter-spacing: -4px;
+    letter-spacing: -2px;
+}
+
+.bio-indicator {
+    font-size: clamp(1.5rem, 5vw, 3rem);
+    line-height: 1;
+    color: #FF0000;
+    transition: transform 0.3s ease;
+    flex-shrink: 0;
+}
+
+.header-title.open .bio-indicator {
+    transform: rotate(45deg);
+}
+
+/* Bio panel slide */
+.bio-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bio-panel.open {
+    max-height: 400px;
+}
+
+.bio-content {
+    border-top: 3px solid #FF0000;
+    margin-top: 24px;
+    padding-top: 24px;
+    text-align: left;
+}
+
+.bio-role {
+    font-size: clamp(0.75rem, 3vw, 1rem);
+    color: #FF0000;
+    letter-spacing: 3px;
+    margin: 0 0 16px 0;
+}
+
+.bio-text {
+    font-size: clamp(0.85rem, 2.5vw, 1.1rem);
+    line-height: 1.6;
+    letter-spacing: 1px;
+    margin: 0 0 16px 0;
+    text-transform: none;
+    font-family: 'Archivo Black', sans-serif;
+}
+
+.bio-location {
+    font-size: clamp(0.7rem, 2vw, 0.9rem);
+    letter-spacing: 3px;
+    opacity: 0.5;
+    margin: 0;
 }
 
 footer {
     grid-area: footer;
     padding: 40px 0;
     text-align: center;
-    font-size: 1.2rem;
-    letter-spacing: 2px;
     border-top: 5px solid white;
+}
+
+.social-links {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-bottom: 16px;
+}
+
+.social-links a {
+    color: #ffffff;
+    text-decoration: none;
+    font-size: clamp(1rem, 4vw, 1.2rem);
+    letter-spacing: 2px;
+    border-bottom: 2px solid transparent;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.social-links a:hover {
+    border-bottom-color: #FF0000;
+    color: #FF0000;
+}
+
+.copyright {
+    margin: 0;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    opacity: 0.5;
 }
 
 /* ================================================= */
@@ -120,6 +221,7 @@ footer {
     outline: none;
     
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     text-align: center;
@@ -135,17 +237,22 @@ footer {
     box-shadow: 0 0 0 transparent;
 }
 
-.project-1 h2, .project-2 h2, .project-3 h2 {
-    font-size: clamp(3.5rem, 10vw, 7rem); 
+.project-1 h3, .project-2 h3, .project-3 h3 {
+    font-size: clamp(2rem, 8vw, 7rem);
     margin: 0;
     line-height: 0.9;
-    pointer-events: none; 
+    pointer-events: none;
 }
 
-/* EFECTO HOVER */
-.project-1:hover, .project-2:hover, .project-3:hover {
-    transform: translate(-15px, -15px); /* Se mueve arriba/izquierda */
-    box-shadow: 15px 15px 0 #FF0000;    /* Sombra sólida roja abajo/derecha */
+/* EFECTO HOVER Y FOCUS */
+.project-1:hover, .project-2:hover, .project-3:hover,
+.project-1:focus-within, .project-2:focus-within, .project-3:focus-within {
+    transform: translate(-15px, -15px);
+    box-shadow: 15px 15px 0 #FF0000;
+}
+
+.project-1 a, .project-2 a, .project-3 a {
+    outline: none;
 }
 
 
@@ -159,7 +266,7 @@ footer {
             "header header header"
             "project-1 project-2 project-3"
             "footer footer footer";
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-rows: auto 1fr auto;
         
         gap: 40px; 
@@ -171,6 +278,11 @@ footer {
         aspect-ratio: 1 / 1;
         min-height: auto;
         height: auto;
+        overflow: hidden;
+    }
+
+    .project-1 h3, .project-2 h3, .project-3 h3 {
+        font-size: clamp(1.5rem, 3vw, 3.5rem);
     }
     
     /* Hover más exagerado en pantalla grande */
