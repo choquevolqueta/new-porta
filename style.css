@@ -1,193 +1,393 @@
 /* ================================================= */
-/* 1. TIPOGRAFÍA (FUENTE BRUTALISTA)                 */
+/* VISUAL LANGUAGE: NEGRO / BLANCO / ROJO, BRUTALISTA */
 /* ================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap');
 
-/* ================================================= */
-/* 2. ESTILOS GENERALES (FONDO NEGRO)                */
-/* ================================================= */
 *, *::before, *::after {
     box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
 }
 
 body {
     margin: 0;
     padding: 0;
     overflow-x: hidden;
-    background-color: #000000; /* Negro Absoluto */
-    color: #ffffff;            /* Texto Blanco */
+    background-color: #000000;
+    color: #ffffff;
     font-family: 'Archivo Black', sans-serif;
     text-transform: uppercase;
     -webkit-font-smoothing: antialiased;
 }
 
+a {
+    color: inherit;
+}
+
 /* ================================================= */
-/* 3. SPLASH SCREEN (RESTAURADO)                     */
+/* 1. TOPBAR (NAV FIJA)                              */
 /* ================================================= */
-#splash-screen {
+.topbar {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
-    overflow: hidden;
-    z-index: 9999; /* Z-index muy alto para tapar todo lo demás */
-    cursor: pointer;
-    background-color: #000; /* Fondo negro por si el video tarda en cargar */
-    transition: opacity 1s ease-out; 
-}
-
-#portfolio-video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-#click-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    text-align: center;
-    background: rgba(0, 0, 0, 0.5); /* Fondo semitransparente para leer texto */
-    padding: 20px 40px;
-    border-radius: 0; /* Quitamos bordes redondeados para que coincida con el estilo */
-    border: 2px solid white; /* Borde blanco estilo brutalista */
-    z-index: 10001; 
-}
-
-/* ================================================= */
-/* 4. LAYOUT PRINCIPAL (GRID)                        */
-/* ================================================= */
-#main-content {
-    opacity: 0; /* JS debe cambiar esto a 1 */
-    transition: opacity 0.5s ease-out;
-
-    min-height: 100vh;
-    width: 100%;
-
-    display: grid;
-    /* MÓVIL: 1 Columna */
-    grid-template-areas:
-        "header"
-        "project-1"
-        "project-2"
-        "project-3"
-        "footer";
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: min-content min-content min-content min-content min-content;
-
-    gap: 30px;
-    padding: 30px;
-    box-sizing: border-box;
-}
-
-#main-content > * {
-    min-width: 0;
-}
-
-/* ================================================= */
-/* 5. HEADER                                         */
-/* ================================================= */
-header {
-    grid-area: header;
-    padding: 20px 0;
-    text-align: center;
-}
-
-.header-title {
+    z-index: 1000;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 30px;
+    background-color: #000000;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.brand {
+    font-size: 1rem;
+    letter-spacing: 2px;
+    text-decoration: none;
+}
+
+.brand-accent {
+    color: #FF0000;
+}
+
+.nav-links {
+    display: flex;
+    gap: 24px;
+}
+
+.nav-links a {
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-decoration: none;
+    opacity: 0.7;
+    border-bottom: 2px solid transparent;
+    padding-bottom: 2px;
+    transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+    opacity: 1;
+    color: #FF0000;
+    border-bottom-color: #FF0000;
+}
+
+/* Language toggle (fusionado de lang.css) */
+.lang-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lang-btn {
+    background: none;
+    border: none;
+    color: #ffffff;
+    font-family: inherit;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
     cursor: pointer;
+    padding: 4px;
+    opacity: 0.4;
+    transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.lang-btn.active {
+    opacity: 1;
+    color: #FF0000;
+}
+
+.lang-btn:hover:not(.active) {
+    opacity: 0.85;
+}
+
+.lang-sep {
+    opacity: 0.4;
+    font-size: 0.8rem;
     user-select: none;
 }
 
-.header-title:focus {
-    outline: 2px solid #FF0000;
-    outline-offset: 4px;
+/* ================================================= */
+/* 2. SECCIONES                                      */
+/* ================================================= */
+section {
+    padding: 120px 30px 60px;
+    scroll-margin-top: 90px;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
-header h2 {
-    font-size: clamp(2.5rem, 10vw, 10rem);
-    line-height: 0.9;
-    margin: 0;
-    letter-spacing: -2px;
+h2 {
+    font-size: clamp(1.6rem, 6vw, 3.5rem);
+    letter-spacing: -1px;
+    margin: 0 0 40px 0;
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
 }
 
-.bio-indicator {
-    font-size: clamp(1.5rem, 5vw, 3rem);
-    line-height: 1;
+.sec-num {
     color: #FF0000;
-    transition: transform 0.3s ease;
-    flex-shrink: 0;
+    font-size: 0.6em;
 }
 
-.header-title.open .bio-indicator {
-    transform: rotate(45deg);
+/* Reveal on scroll */
+.reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
 }
 
-/* Bio panel slide */
-.bio-panel {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+.reveal.visible {
+    opacity: 1;
+    transform: none;
 }
 
-.bio-panel.open {
-    max-height: 400px;
-}
-
-.bio-content {
-    border-top: 3px solid #FF0000;
-    margin-top: 24px;
-    padding-top: 24px;
-    text-align: left;
-}
-
-.bio-role {
-    font-size: clamp(0.75rem, 3vw, 1rem);
-    color: #FF0000;
-    letter-spacing: 3px;
-    margin: 0 0 16px 0;
-}
-
-.bio-text {
-    font-size: clamp(0.85rem, 2.5vw, 1.1rem);
-    line-height: 1.6;
-    letter-spacing: 1px;
-    margin: 0 0 16px 0;
-    text-transform: none;
-    font-family: 'Archivo Black', sans-serif;
-}
-
-.bio-location {
-    font-size: clamp(0.7rem, 2vw, 0.9rem);
-    letter-spacing: 3px;
-    opacity: 0.5;
-    margin: 0;
-}
-
-footer {
-    grid-area: footer;
-    padding: 40px 0;
+/* ================================================= */
+/* 3. HERO                                           */
+/* ================================================= */
+#hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     text-align: center;
-    border-top: 5px solid white;
+    padding-top: 60px;
+}
+
+#hero h1 {
+    font-size: clamp(3rem, 13vw, 10rem);
+    line-height: 0.9;
+    letter-spacing: -3px;
+    margin: 20px 0;
+}
+
+.hero-tagline {
+    font-size: clamp(0.9rem, 3vw, 1.4rem);
+    color: #FF0000;
+    letter-spacing: 4px;
+    margin: 0;
+}
+
+.hero-sub {
+    font-size: clamp(0.75rem, 2.5vw, 1rem);
+    letter-spacing: 3px;
+    opacity: 0.7;
+    margin: 0;
+    text-transform: none;
+}
+
+.hero-lead {
+    font-size: clamp(1.1rem, 4vw, 2.2rem);
+    letter-spacing: 1px;
+    line-height: 1.3;
+    color: #ffffff;
+    margin: 0 0 8px 0;
+    text-transform: none;
+    max-width: 640px;
+}
+
+.cta-button {
+    display: inline-block;
+    margin-top: 40px;
+    background-color: #FF0000;
+    color: #ffffff;
+    border: 2px solid #FF0000;
+    padding: 16px 30px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    cursor: pointer;
+}
+
+.cta-button:hover {
+    background-color: #000000;
+    color: #FF0000;
+}
+
+.scroll-hint {
+    margin-top: 60px;
+    font-size: 1.5rem;
+    opacity: 0.5;
+    animation: bob 1.8s ease-in-out infinite;
+}
+
+@keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(10px); }
+}
+
+/* ================================================= */
+/* 4. SOBRE MÍ                                       */
+/* ================================================= */
+.about-text {
+    font-size: clamp(1rem, 3vw, 1.5rem);
+    line-height: 1.7;
+    letter-spacing: 1px;
+    max-width: 800px;
+    margin: 0;
+    text-transform: none;
+}
+
+/* ================================================= */
+/* 5. PROYECTOS (BLOQUES BLANCOS + SOMBRA ROJA)      */
+/* ================================================= */
+.projects-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 30px;
+}
+
+.project-card {
+    background-color: #ffffff;
+    color: #000000;
+    padding: 28px;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 260px;
+    transition: transform 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                box-shadow 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    box-shadow: 0 0 0 transparent;
+}
+
+.project-card h3 {
+    font-size: clamp(1.5rem, 5vw, 2.5rem);
+    margin: 0 0 8px 0;
+    line-height: 0.95;
+    letter-spacing: -1px;
+}
+
+.project-tags {
+    color: #FF0000;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    margin: 0 0 16px 0;
+}
+
+.project-desc {
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+    line-height: 1.6;
+    margin: 0 0 24px 0;
+    text-transform: none;
+    opacity: 0.85;
+}
+
+.project-link {
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    text-decoration: none;
+    border-bottom: 3px solid #000000;
+    padding-bottom: 4px;
+    align-self: flex-start;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.project-link:hover {
+    color: #FF0000;
+    border-bottom-color: #FF0000;
+}
+
+.project-card:hover {
+    transform: translate(-12px, -12px);
+    box-shadow: 12px 12px 0 #FF0000;
+}
+
+/* ================================================= */
+/* 6. SKILLS                                         */
+/* ================================================= */
+.skills-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.skill-badge {
+    border: 2px solid #ffffff;
+    padding: 12px 18px;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    cursor: default;
+    transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.skill-badge:hover {
+    border-color: #FF0000;
+    color: #FF0000;
+    transform: translate(-3px, -3px);
+}
+
+/* ================================================= */
+/* 7. ROADMAP                                        */
+/* ================================================= */
+.roadmap-list {
+    list-style: none;
+    counter-reset: roadmap;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 20px;
+    max-width: 800px;
+}
+
+.roadmap-list li {
+    counter-increment: roadmap;
+    font-size: clamp(0.95rem, 3vw, 1.3rem);
+    letter-spacing: 1px;
+    line-height: 1.6;
+    padding-left: 70px;
+    position: relative;
+    text-transform: none;
+}
+
+.roadmap-list li::before {
+    content: counter(roadmap, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: #FF0000;
+    font-size: 1.4em;
+    letter-spacing: 0;
+}
+
+/* ================================================= */
+/* 8. FOOTER / CONTACTO                              */
+/* ================================================= */
+footer#contact {
+    padding: 80px 30px 60px;
+    border-top: 5px solid #ffffff;
+    text-align: center;
+    max-width: none;
+}
+
+footer#contact h2 {
+    justify-content: center;
+    margin-bottom: 40px;
 }
 
 .social-links {
     display: flex;
     justify-content: center;
-    gap: 30px;
-    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 30px 40px;
+    margin-bottom: 30px;
 }
 
 .social-links a {
     color: #ffffff;
     text-decoration: none;
-    font-size: clamp(1rem, 4vw, 1.2rem);
+    font-size: clamp(0.9rem, 3.5vw, 1.2rem);
     letter-spacing: 2px;
     border-bottom: 2px solid transparent;
     transition: border-color 0.15s ease, color 0.15s ease;
@@ -206,88 +406,55 @@ footer {
 }
 
 /* ================================================= */
-/* 6. PROYECTOS (BLOQUES BLANCOS + SOMBRA ROJA)      */
+/* 8.5 MEDIA QUERY (MÓVIL)                           */
 /* ================================================= */
+@media (max-width: 767px) {
+    .topbar {
+        padding: 12px 20px;
+        row-gap: 8px;
+    }
 
-.project-1, .project-2, .project-3 {
-    background-color: #ffffff; 
-    color: #000000;            
-    
-    padding: 20px;
-    
-    /* Sin bordes */
-    border: none;
-    border-radius: 0;
-    outline: none;
-    
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    
-    min-height: 300px; 
-    min-height: clamp(150px, 25vh, 300px);
-    cursor: pointer;
-    
-    /* Transición rápida */
-    transition: all 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    
-    /* Inicialmente sin sombra */
-    box-shadow: 0 0 0 transparent;
+    .nav-links {
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        order: 3;
+        width: 100%;
+        justify-content: center;
+    }
+
+    section {
+        padding: 90px 20px 50px;
+        scroll-margin-top: 70px;
+    }
+
+    .roadmap-list li {
+        padding-left: 50px;
+    }
 }
-
-.project-1 h3, .project-2 h3, .project-3 h3 {
-    font-size: clamp(2rem, 8vw, 7rem);
-    margin: 0;
-    line-height: 0.9;
-    pointer-events: none;
-}
-
-/* EFECTO HOVER Y FOCUS */
-.project-1:hover, .project-2:hover, .project-3:hover,
-.project-1:focus-within, .project-2:focus-within, .project-3:focus-within {
-    transform: translate(-15px, -15px);
-    box-shadow: 15px 15px 0 #FF0000;
-}
-
-.project-1 a, .project-2 a, .project-3 a {
-    outline: none;
-}
-
 
 /* ================================================= */
-/* 7. MEDIA QUERY (ESCRITORIO)                       */
+/* 9. MEDIA QUERY (DESKTOP)                          */
 /* ================================================= */
 @media (min-width: 1024px) {
-    #main-content {
-        /* 3 Columnas */
-        grid-template-areas:
-            "header header header"
-            "project-1 project-2 project-3"
-            "footer footer footer";
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        grid-template-rows: auto 1fr auto;
-        
-        gap: 40px; 
-        padding: 60px;
-        align-content: center;
+    section {
+        padding: 140px 60px 80px;
     }
 
-    .project-1, .project-2, .project-3 {
-        aspect-ratio: 1 / 1;
-        min-height: auto;
-        height: auto;
-        overflow: hidden;
+    .projects-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 40px;
     }
 
-    .project-1 h3, .project-2 h3, .project-3 h3 {
-        font-size: clamp(1.5rem, 3vw, 3.5rem);
+    .project-card {
+        min-height: 300px;
     }
-    
-    /* Hover más exagerado en pantalla grande */
-    .project-1:hover, .project-2:hover, .project-3:hover {
-        transform: translate(-20px, -20px);
-        box-shadow: 20px 20px 0 #FF0000; 
+
+    .project-card:hover {
+        transform: translate(-15px, -15px);
+        box-shadow: 15px 15px 0 #FF0000;
+    }
+
+    .topbar {
+        padding: 20px 50px;
     }
 }
