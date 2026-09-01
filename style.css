@@ -299,6 +299,30 @@ h2 {
     border-bottom-color: #FF0000;
 }
 
+.project-media {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.project-media video {
+    width: 100%;
+    display: block;
+    border: 2px solid #FF0000;
+}
+
+@media (min-width: 1024px) {
+    .project-media {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .project-media video {
+        max-width: calc(50% - 5px);
+    }
+}
+
 .project-card:hover {
     transform: translate(-12px, -12px);
     box-shadow: 12px 12px 0 #FF0000;
