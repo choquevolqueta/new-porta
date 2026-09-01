@@ -3,75 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Portafolio audiovisual de Alexander Cortez — fotografía, video y publicidad.">
-    <meta property="og:title" content="Alexander Cortez — Portafolio Audiovisual">
-    <meta property="og:description" content="Fotografía, video y publicidad por Alexander Cortez.">
+
+    <title>Agentes de IA y automatización para tu negocio | Alexander Cortez</title>
+    <meta name="description" content="Automatizo el WhatsApp de tu negocio con agentes de IA: respuestas al instante, 24/7, sin contratar a nadie. Desarrollador en desarrollo visual, IA generativa y agentes para PYMES en Bolivia.">
+    <meta name="robots" content="index, follow">
+
+    <link rel="canonical" href="https://choquevolqueta.github.io/new-porta/">
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website">
-    <title>Alexander Cortez — Portafolio Audiovisual</title>
+    <meta property="og:site_name" content="Alexander Cortez">
+    <meta property="og:title" content="Agentes de IA y automatización para tu negocio | Alexander Cortez">
+    <meta property="og:description" content="Automatizo el WhatsApp de tu negocio con agentes de IA. Respuestas al instante, 24/7. Agentes, automatización y herramientas a medida para PYMES en Bolivia.">
+    <meta property="og:url" content="https://choquevolqueta.github.io/new-porta/">
+    <meta property="og:image" content="https://choquevolqueta.github.io/new-porta/assets/og-image.png">
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Agentes de IA y automatización para tu negocio | Alexander Cortez">
+    <meta name="twitter:description" content="Automatizo el WhatsApp de tu negocio con agentes de IA. Agentes y automatización para PYMES en Bolivia.">
+    <meta name="twitter:image" content="https://choquevolqueta.github.io/new-porta/assets/og-image.png">
+
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23FF0000'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="lang.css">
 </head>
 <body>
 
-    <div id="splash-screen">
-        <video id="portfolio-video" autoplay loop muted playsinline>
-            <source src="src/splash.mp4" type="video/mp4">
-            Tu navegador no soporta el tag de video.
-        </video>
-        <div id="click-overlay">
-            <h1 data-i18n="splash.title">Ver Portafolio</h1>
-            <p data-i18n="splash.hint">(Haz clic en cualquier lugar)</p>
+    <nav class="topbar">
+        <a class="brand" href="#hero">ALEXANDER CORTEZ<span class="brand-accent">.</span></a>
+        <div class="nav-links">
+            <a href="#about" data-i18n="nav.about">SOBRE MÍ</a>
+            <a href="#projects" data-i18n="nav.projects">PROYECTOS</a>
+            <a href="#skills" data-i18n="nav.skills">SKILLS</a>
+            <a href="#roadmap" data-i18n="nav.roadmap">ROADMAP</a>
+            <a href="#contact" data-i18n="nav.contact">CONTACTO</a>
         </div>
-    </div>
+        <div class="lang-toggle" role="group" aria-label="Language toggle">
+            <button class="lang-btn" data-lang="es">ES</button>
+            <span class="lang-sep">/</span>
+            <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+    </nav>
 
-    <div id="main-content">
-    <div class="lang-toggle" id="index-lang-toggle" role="group" aria-label="Language toggle">
-        <button class="lang-btn" data-lang="es">ES</button>
-        <span class="lang-sep">/</span>
-        <button class="lang-btn" data-lang="en">EN</button>
-    </div>
-    <header class="grid-item">
-        <div class="header-title" id="bio-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="bio-panel">
-            <h2>ALEXANDER CORTEZ</h2>
-            <span class="bio-indicator" aria-hidden="true">+</span>
-        </div>
-        <div class="bio-panel" id="bio-panel" aria-hidden="true">
-            <div class="bio-content">
-                <p class="bio-role" data-i18n="bio.role">PUBLICISTA DE PROFESIÓN, AUDIOVISUAL DE CORAZÓN</p>
-                <p class="bio-text" data-i18n="bio.text">
-                    Nacido en Bolivia, radicado en Santiago hace 8 meses. Me especializo en generación de videos mediante IA y fotografía de retrato — aunque, escucha bien: puedo armar hasta páginas web y agentes automatizados de ventas si me dan el incentivo adecuado.
-                </p>
-                <p class="bio-location" data-i18n="bio.location">— SANTIAGO, CHILE</p>
-            </div>
-        </div>
-    </header>
-    
-   <section class="grid-item project-1" style="position: relative;">
-        <h3 data-i18n="project.photo">FOTOGRAFÍA</h3>
-        <a href="galeria.html" aria-label="Ver galería de fotografía" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></a>
+    <section id="hero">
+        <p class="hero-tagline" data-i18n="hero.tagline">IA DEVELOPER</p>
+        <h1>ALEXANDER<br>CORTEZ</h1>
+        <p class="hero-sub" data-i18n="hero.sub">Python · IA generativa</p>
+        <span class="scroll-hint" aria-hidden="true">▾</span>
     </section>
 
-    <section class="grid-item project-2" style="position: relative;">
-        <h3 data-i18n="project.video">VIDEOS</h3>
-        <a href="videos.html" aria-label="Ver videos" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></a>
+    <section id="about">
+        <h2><span class="sec-num">01</span><span data-i18n="about.title">SOBRE MÍ</span></h2>
+        <p class="about-text" data-i18n="about.text">
+            Nacido en Bolivia, radicado en Santiago. Empecé vibecodeando y hoy construyo herramientas propias con IA generativa: agentes, automatización y sistemas multiagente. Aprendo cada día y publico lo que voy construyendo.
+        </p>
     </section>
 
-    <section class="grid-item project-3" style="position: relative;">
-        <h3 data-i18n="project.ads">PUBLICIDAD</h3>
-        <a href="publicidad.html" aria-label="Ver cuentas de publicidad" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;"></a>
+    <section id="projects">
+        <h2><span class="sec-num">02</span><span data-i18n="projects.title">PROYECTOS</span></h2>
+        <div class="projects-grid">
+
+            <article class="project-card">
+                <h3 data-i18n="projects.p1.title">AGENTE ADELITA V1</h3>
+                <p class="project-tags" data-i18n="projects.p1.tags">PYTHON · AGENTE IA · WHATSAPP</p>
+                <p class="project-desc" data-i18n="projects.p1.desc">Agente de WhatsApp que edita precios en un afiche .PSD real (Photopea headless, sin Photoshop ni Canva) y responde con el JPG actualizado. Interacción en lenguaje natural, con confirmación previa e historial de precios en SQLite.</p>
+            </article>
+
+            <article class="project-card">
+                <h3 data-i18n="projects.p2.title">AGENTE JURISPRUDENCIA TCP</h3>
+                <p class="project-tags" data-i18n="projects.p2.tags">RAG · FAISS · LEGAL TECH</p>
+                <p class="project-desc" data-i18n="projects.p2.desc">Motor de búsqueda semántica sobre 538+ sentencias del Tribunal Constitucional Plurinacional de Bolivia. Ingiere la jurisprudencia, arma un grafo de citas y responde con referencias verificables. Demo pública en Hugging Face.</p>
+                <a class="project-link" href="https://huggingface.co/spaces/choquevolqueta2210/pasantetcpdemo" target="_blank" rel="noopener noreferrer" data-i18n="projects.view_demo">VER DEMO ↗</a>
+            </article>
+
+            <article class="project-card">
+                <h3 data-i18n="projects.p3.title">IZI PEGA</h3>
+                <p class="project-tags" data-i18n="projects.p3.tags">EXTENSIÓN · AI · ATS</p>
+                <p class="project-desc" data-i18n="projects.p3.desc">Extensión de Chrome + servidor local que usa IA (DeepSeek) para evaluar si una oferta laboral te conviene y rellenar formularios web con tu perfil para superar los filtros ATS. Todo corre local en tu máquina.</p>
+                <a class="project-link" href="https://github.com/choquevolqueta/Izipega" target="_blank" rel="noopener noreferrer" data-i18n="projects.view_repo">VER REPO ↗</a>
+            </article>
+
+            <article class="project-card">
+                <h3 data-i18n="projects.p4.title">GOEBBELS (ALFA)</h3>
+                <p class="project-tags" data-i18n="projects.p4.tags">SIMULACIÓN SOCIAL · MULTIAGENTE · MONITOREO</p>
+                <p class="project-desc" data-i18n="projects.p4.desc">Loop de dos sistemas propios unidos por API: AlmaColectiva cosecha señal real del ecosistema digital (8 fuentes) y MiroFish, un motor de simulación social multiagente, se ancla a esos datos para proyectar escenarios contrafactuales — por ejemplo, cómo evolucionaría la conversación si arrestaran a Evo Morales. Ambos builds son partes del mismo alfa.</p>
+            </article>
+
+        </div>
     </section>
 
-    <footer>
+    <section id="skills">
+        <h2><span class="sec-num">03</span><span data-i18n="skills.title">SKILLS</span></h2>
+        <div class="skills-grid">
+            <span class="skill-badge">PYTHON</span>
+            <span class="skill-badge">IA GENERATIVA</span>
+            <span class="skill-badge">CLAUDE CODE</span>
+            <span class="skill-badge">OPENCODE</span>
+            <span class="skill-badge">AGENTES IA</span>
+            <span class="skill-badge">COMFYUI</span>
+        </div>
+    </section>
+
+    <section id="roadmap">
+        <h2><span class="sec-num">04</span><span data-i18n="roadmap.title">EN PROCESO</span></h2>
+        <ol class="roadmap-list">
+            <li data-i18n="roadmap.1">Conseguir certificacion CS50P</li>
+            <li data-i18n="roadmap.2">Terminar set de extensiones de nodos para ComfyUI</li>
+        </ol>
+    </section>
+
+    <footer id="contact">
+        <h2><span class="sec-num">05</span><span data-i18n="contact.title">CONTACTO</span></h2>
         <div class="social-links">
-            <a href="https://www.instagram.com/bot_hindu/" target="_blank" rel="noopener noreferrer">INSTAGRAM</a>
+            <a href="mailto:alecortezp1996@gmail.com">alecortezp1996@gmail.com</a>
             <a href="https://github.com/choquevolqueta" target="_blank" rel="noopener noreferrer">GITHUB</a>
             <a href="https://www.linkedin.com/in/alexander-cortez-0451782a2" target="_blank" rel="noopener noreferrer">LINKEDIN</a>
         </div>
         <p class="copyright">© 2026 ALEXANDER CORTEZ</p>
     </footer>
-</div>
 
     <script src="i18n.js"></script>
     <script src="app.js"></script>
