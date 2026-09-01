@@ -28,4 +28,54 @@ document.addEventListener('DOMContentLoaded', function () {
     }, { rootMargin: '-45% 0px -45% 0px' });
     sections.forEach(s => spy.observe(s));
 
+    // Modal de video de proyectos
+    const modal = document.querySelector('.video-modal');
+    const modalContainer = document.querySelector('.video-modal-container');
+    const closeBtn = modal.querySelector('.video-modal-close');
+    let lastTrigger = null;
+
+    function openVideoModal(videos) {
+        modalContainer.innerHTML = '';
+        videos.forEach(src => {
+            const video = document.createElement('video');
+            video.src = src;
+            video.controls = true;
+            video.playsInline = true;
+            video.preload = 'metadata';
+            modalContainer.appendChild(video);
+        });
+        modal.hidden = false;
+        closeBtn.focus();
+    }
+
+    function closeVideoModal() {
+        modalContainer.querySelectorAll('video').forEach(v => {
+            v.pause();
+            v.removeAttribute('src');
+            v.load();
+        });
+        modalContainer.innerHTML = '';
+        modal.hidden = true;
+        if (lastTrigger) lastTrigger.focus();
+    }
+
+    document.addEventListener('click', event => {
+        const trigger = event.target.closest('.project-video-btn');
+        if (trigger) {
+            lastTrigger = trigger;
+            const videos = trigger.dataset.videos.split('|').map(s => s.trim()).filter(Boolean);
+            if (videos.length) openVideoModal(videos);
+            return;
+        }
+        if (event.target.closest('[data-close]') && !modal.hidden) {
+            closeVideoModal();
+        }
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !modal.hidden) {
+            closeVideoModal();
+        }
+    });
+
 });
