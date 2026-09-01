@@ -30,7 +30,15 @@ const translations = {
         'roadmap.title': 'EN PROCESO',
         'roadmap.1': 'Conseguir certificación CS50P',
         'roadmap.2': 'Terminar set de extensiones de nodos para ComfyUI',
-        'contact.title': 'CONTACTO'
+        'contact.title': 'CONTACTO',
+        'services.title': 'SERVICIOS',
+        'services.s1.title': 'Agente de WhatsApp',
+        'services.s1.desc': 'Responde a tus clientes al instante, 24/7: precios, disponibilidad y preguntas frecuentes. Sin contratar a nadie.',
+        'services.s2.title': 'Automatización',
+        'services.s2.desc': 'Conecto tus herramientas y elimino tareas repetitivas: pedidos, citas, plantillas, notificaciones.',
+        'services.s3.title': 'Agentes a medida',
+        'services.s3.desc': 'Un asistente con IA propio de tu negocio, entrenado con lo que sabés, para lo que necesites.',
+        'contact.cta': 'Escribime por Telegram'
     },
     en: {
         'nav.about': 'ABOUT',
@@ -63,7 +71,15 @@ const translations = {
         'roadmap.title': 'IN PROGRESS',
         'roadmap.1': 'Get the CS50P certification',
         'roadmap.2': 'Finish the custom node set for ComfyUI',
-        'contact.title': 'CONTACT'
+        'contact.title': 'CONTACT',
+        'services.title': 'SERVICES',
+        'services.s1.title': 'WhatsApp agent',
+        'services.s1.desc': 'Replies to your customers instantly, 24/7: prices, availability and FAQs. No hiring needed.',
+        'services.s2.title': 'Automation',
+        'services.s2.desc': 'I connect your tools and remove repetitive tasks: orders, appointments, templates, notifications.',
+        'services.s3.title': 'Custom agents',
+        'services.s3.desc': 'An AI assistant built for your business, trained on what you know, for whatever you need.',
+        'contact.cta': "Message me on Telegram"
     }
 };
 
