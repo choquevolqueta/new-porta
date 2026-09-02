@@ -9,20 +9,21 @@ Static, bilingual (ES/EN) single-page portfolio ("vitrina") for Alexander Cortez
 | `index.html` | Single scroll page: hero → about → projects → skills → roadmap → contact. All sections have anchors (`#about`, `#projects`, `#skills`, `#roadmap`, `#contact`). |
 | `style.css` | All styling, incl. the ES/EN lang toggle (black/white/red brutalist, `Archivo Black`, uppercase). |
 | `i18n.js` | ES/EN dictionary (`translations`) + `setLanguage()` + toggle binding. |
-| `app.js` | Scroll-reveal via IntersectionObserver + active-section highlighting in the nav. |
+| `app.js` | Scroll-reveal via IntersectionObserver + active-section highlighting in the nav + video-modal open/close logic. |
 
-Assets: `assets/portafolio.pdf` (orphaned CV, not linked anywhere — do not delete).
+Assets: `assets/videos/*.mp4` (demo clips shown in `.video-modal` from project cards p1/p4) and `assets/og-image.png` (1200×630 share thumbnail).
 
 ## Editing content (most common task)
 - **Every visible string lives in 3 places**: hardcoded Spanish in `index.html` (no-JS default) AND in `i18n.js` `translations` under both `es` and `en`. Updating only one leaves stale copy when the ES/EN toggle is used. Default language is `es` unless `sessionStorage.lang` was set.
 - To add a translatable element: put `data-i18n="key"` on the tag with Spanish default text, then add the same key to both `translations.es` and `translations.en`.
 - **Projects are placeholder content**: `projects.p1..p4.*` keys in `i18n.js` + hardcoded Spanish in the 4 `.project-card` articles of `index.html`. Replace with real titles, descriptions, tags and give the `.project-link` anchors real `href`s. Grid auto-lays out 1-per-row (mobile) / 2-per-row (desktop) — no layout edits needed to add/remove cards.
+- **Modal de video:** project cards p1 (Adelita) and p4 (Goebbels) have a `.project-video-btn[data-videos]` button (video paths separated by `|`) that opens a `.video-modal` lightbox (close via X, backdrop, or Escape). Markup in `index.html`, styles `.video-modal*` in `style.css`, logic in `app.js`.
 - Skills badges and social links are intentionally NOT translated (keywords/brand names) — leave without `data-i18n`.
 
-## Current state & next steps (Aug 2026)
-- Site was **rebuilt** as a single-page dev/IA portfolio (previous multi-page photo/video/ads site removed). Changes are in the working tree, **not committed yet**.
-- Projects, skills, roadmap, and email are **placeholder content** — see `AVANCES_Y_SUGERENCIAS.txt` for the full pending checklist and suggestions. Do not invent real project links; ask the user for them.
-- `.playwright-mcp/` and the `*.png` screenshots are test artifacts; exclude them (`.gitignore`) or delete before committing.
+## Current state & next steps (Sep 2026)
+- Site rebuilt as a single-page dev/IA portfolio. SEO + Telegram funnel (Fase 1) and the project video modal are **implemented and committed**.
+- **History was purged** with `git filter-repo` (old media site, test artifacts `.superpowers/`, `.playwright-mcp/`, `*.png` screenshots, `.claude/`, `assets/portafolio.pdf`, `AVANCES_Y_SUGERENCIAS.txt`, `docs/` were removed). Only the operative site files remain. Repo history is rewritten — **force-push only**, never a normal `git push`.
+- Projects, skills, roadmap, and email are **placeholder content** — pending real links (p2 demo on HuggingFace, p4 video). Do not invent real project links; ask the user for them.
 
 ## Manual-testing gotchas
 - Language toggle reads `sessionStorage.lang`. Soft reloads keep that state — to reset language, use a fresh tab or incognito.

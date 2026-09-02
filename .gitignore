@@ -1,0 +1,23 @@
+# Tooling / test artifacts
+.playwright-mcp/
+.superpowers/
+.claude/
+*.log
+
+# Screenshots & captures
+*.png
+*.jpg
+*.jpeg
+
+# ...but keep the operational OG image
+!assets/og-image.png
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local dev
+node_modules/
+.venv/
+__pycache__/
+*.pyc
