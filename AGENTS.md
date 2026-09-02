@@ -22,7 +22,8 @@ Assets: `assets/videos/*.mp4` (demo clips shown in `.video-modal` from project c
 
 ## Current state & next steps (Sep 2026)
 - Site rebuilt as a single-page dev/IA portfolio. SEO + Telegram funnel (Fase 1) and the project video modal are **implemented and committed**.
-- **History was purged** with `git filter-repo` (old media site, test artifacts `.superpowers/`, `.playwright-mcp/`, `*.png` screenshots, `.claude/`, `assets/portafolio.pdf`, `AVANCES_Y_SUGERENCIAS.txt`, `docs/` were removed). Only the operative site files remain. Repo history is rewritten — **force-push only**, never a normal `git push`.
+- **History was purged** with `git filter-repo` (old media site, test artifacts `.superpowers/`, `.playwright-mcp/`, `*.png` screenshots, `.claude/`, `assets/portafolio.pdf`, `AVANCES_Y_SUGERENCIAS.txt`, `docs/` were removed). Only the operative site files remain. Repo history is rewritten — **force-push only** (use `git push --force-with-lease`), never a normal `git push`. `.git` is now ~5.6 MB; the pre-purge backup lives at `C:\Users\hp\AppData\Local\Temp\opencode\new-porta-backup-20260901-222144`.
+- `.gitignore` (excludes tooling/test artifacts but preserves `assets/og-image.png` via negated rule) and `.gitattributes` (`* text=auto` normalizes LF; binaries marked `binary`) were added — don't remove them.
 - Projects, skills, roadmap, and email are **placeholder content** — pending real links (p2 demo on HuggingFace, p4 video). Do not invent real project links; ask the user for them.
 
 ## Manual-testing gotchas
