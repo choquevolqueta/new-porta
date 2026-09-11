@@ -2,6 +2,14 @@
 /* VISUAL LANGUAGE: NEGRO / BLANCO / ROJO, BRUTALISTA */
 /* ================================================= */
 
+@font-face {
+    font-family: 'Archivo Black';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('assets/fonts/archivo-black-latin.woff2') format('woff2');
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
 }

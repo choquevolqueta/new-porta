@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://choquevolqueta.github.io/new-porta/sitemap.xml
+Sitemap: https://choquevolqueta.com/sitemap.xml
