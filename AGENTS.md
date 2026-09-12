@@ -33,5 +33,21 @@ Assets: `assets/videos/*.mp4` (demo clips shown in `.video-modal` from project c
 ## Deployment
 No CI in the repo. `main` is the deploy branch — push to `origin` (`git@github.com:choquevolqueta/new-porta.git`) and GitHub Pages redeploys choquevolqueta.github.io (wait for Pages to rebuild). Commit messages in this repo are short and in Spanish (e.g. `modificacion de publicidad`).
 
+## Custom domain + Google Search Console (Sep 2026) — DONE
+- Site is served as **`https://choquevolqueta.com/`** (apex) via GitHub Pages custom domain. `www.choquevolqueta.com` also resolves (`CNAME www → choquevolqueta.com`). The `CNAME` file in the repo root contains `choquevolqueta.com` — keep it, GitHub Pages won't serve the custom domain without it.
+- **DNS is on Cloudflare** (domain purchased there). Required records, all **DNS-only (grey cloud, TTL auto)**:
+  - 4 × `A  @ → 185.199.108.153 / 185.199.109.153 / 185.199.110.153 / 185.199.111.153`
+  - `CNAME www → choquevolqueta.com`
+  - TXT `google-site-verification=...` for Search Console
+  - Do NOT enable Cloudflare proxy (orange cloud) on these — GitHub Pages + custom domain needs real GitHub IPs, not e.g. Cloudflare's.
+  - If `www` ever loses its SSL cert after a few hours, point `CNAME www → choquevolqueta.github.io` instead, wait, re-enable.
+- **SEO wired into `index.html`**: canonical, `og:*`, `twitter:*` point at `https://choquevolqueta.com/...`; Google Fonts is self-hosted locally (`assets/fonts/archivo-black-latin.woff2`, `@font-face` in `style.css`) so the page makes **zero third-party calls**; `sitemap.xml`, `robots.txt` (with `Sitemap:` line) and JSON-LD (Person + Service + `sameAs`) are present.
+- **Verified in Google Search Console** (domain property, DNS TXT method). Sitemap `sitemap.xml` submitted OK; `https://choquevolqueta.com/` requested for indexing.
+- **Keep-alive**: Search Console warns to add a second verification method so the TXT DNS record remains the single point of failure. If you want to harden it later (default now: DNS TXT is enough), use the HTML-file method — put Google's HTML verification file in the repo root and push; Pages serves it, no DNS dependency.
+
+## Sibling repo — do NOT confuse
+- **`porta-publi`** (`git@github.com:choquevolqueta/porta-publi.git`) is the **old media/agency portfolio** kept as a **backup only**. The user does NOT intend to showcase it. It lives at `choquevolqueta.github.io/porta-publi` with **no custom domain** — leave it that way (a custom domain there would compete with the apex SEO). Do not push this repo's branding/material into `new portafolio`; they are separate.
+- Primary funnel to test: the dev/IA single-page portfolio on `choquevolqueta.com` → Telegram CTA (`t.me/Choquevolqueta`).
+
 ## Windows shell gotcha
 PowerShell on this machine mangles non-ASCII output: Spanish accents and em-dashes render as `�`/`�` in `Get-Content`/`Select-String` output even though files are valid UTF-8 (no BOM). To read accented content, trust the `read` tool or `[System.IO.File]::ReadAllText(path, [Text.Encoding]::UTF8)` — don't "fix" files based on mangled shell output.
