@@ -20,4 +20,10 @@ Thumbs.db
 node_modules/
 .venv/
 __pycache__/
-*.pycAGENTS.md
+*.pyc
+
+# Estado local de wrangler (caché del runtime, no es parte del Worker)
+worker/.wrangler/
+
+# Guía local para agentes: no va al repo público
+AGENTS.md
