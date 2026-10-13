@@ -224,6 +224,42 @@
     object-fit: cover;
 }
 
+.tunel-zoom {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.tunel-zoom-btn {
+    width: 46px;
+    height: 46px;
+    font: inherit;
+    font-size: 1.2rem;
+    line-height: 1;
+    background: transparent;
+    color: #ffffff;
+    border: 2px solid #ffffff;
+    cursor: pointer;
+}
+
+.tunel-zoom-btn:hover:not(:disabled) {
+    border-color: #FF0000;
+    color: #FF0000;
+}
+
+.tunel-zoom-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.tunel-zoom-valor {
+    min-width: 62px;
+    text-align: center;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+}
+
 .tunel-aviso {
     font-size: 0.68rem;
     letter-spacing: 1px;

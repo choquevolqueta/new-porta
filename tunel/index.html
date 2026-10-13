@@ -63,8 +63,14 @@
             <h1 class="tunel-titulo">Toma la foto acá</h1>
             <p class="tunel-instruccion">Aparece en la pantalla de la PC. No se guarda en ningún servidor.</p>
 
-            <div class="tunel-preview">
+            <div id="preview" class="tunel-preview">
                 <video id="video" playsinline autoplay muted></video>
+            </div>
+
+            <div id="zoom-controles" class="tunel-zoom" hidden>
+                <button id="btn-zoom-menos" class="tunel-zoom-btn" type="button" aria-label="Alejar">−</button>
+                <span id="zoom-valor" class="tunel-zoom-valor">1×</span>
+                <button id="btn-zoom-mas" class="tunel-zoom-btn" type="button" aria-label="Acercar">+</button>
             </div>
 
             <button id="btn-activar-camara" class="tunel-btn tunel-btn-rojo tunel-btn-ancho" type="button">Activar cámara</button>

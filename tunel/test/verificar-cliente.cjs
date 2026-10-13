@@ -69,8 +69,31 @@ assert.match(contexto.mensajeDeCamara({ name: "SecurityError" }), /permiso/i);
 assert.match(contexto.mensajeDeCamara({ name: "NotFoundError" }), /ninguna cámara/i);
 assert.match(contexto.mensajeDeCamara(new Error("otro")), /No se pudo abrir la cámara/);
 
+// El recorte del zoom digital: centrado, y con el factor bien aplicado.
+assert.deepEqual(
+  { ...contexto.recorteCentrado(1920, 1080, 1) },
+  { x: 0, y: 0, ancho: 1920, alto: 1080 },
+  "sin zoom se copia el cuadro entero"
+);
+assert.deepEqual(
+  { ...contexto.recorteCentrado(1920, 1080, 2) },
+  { x: 480, y: 270, ancho: 960, alto: 540 },
+  "al doble, el centro"
+);
+assert.deepEqual(
+  { ...contexto.recorteCentrado(1000, 1000, 4) },
+  { x: 375, y: 375, ancho: 250, alto: 250 },
+  "al cuádruple, un cuarto del centro"
+);
+
+// El número que se muestra en el control.
+assert.equal(contexto.formatearZoom(1), "1×");
+assert.equal(contexto.formatearZoom(1.5), "1.5×");
+assert.equal(contexto.formatearZoom(2), "2×");
+
 console.log(JSON.stringify({
   conHora: contexto.nombreArchivo(conHora),
   conBasura: contexto.nombreArchivo("basura"),
   horaMostrada: contexto.horaDe(conHora),
+  recorte2x: contexto.recorteCentrado(1920, 1080, 2),
 }));

@@ -233,6 +233,15 @@ var streamCamara = null;
 var socketEmisor = null;
 var tokenEmisor = null;
 
+// Zoom: se usa el del dispositivo si sabe hacerlo, y si no, se recorta el
+// centro del cuadro (que funciona en cualquier teléfono, perdiendo resolución).
+var NIVELES_ZOOM_DIGITAL = [1, 1.5, 2, 2.5, 3];
+var pistaCamara = null;
+var nivelesZoom = [1];
+var zoomActual = 0;
+var modoZoom = "digital";
+var zoomDigital = 1;
+
 function avisoCelular(texto) {
     el("aviso-celular").textContent = texto ?? "";
 }
@@ -284,9 +293,87 @@ async function activarCamara() {
         return;
     }
     el("video").srcObject = streamCamara;
+    el("video").addEventListener("loadedmetadata", () => {
+        const video = el("video");
+        // El recuadro toma la forma real de la cámara: así lo que ves es lo que
+        // sale, sin recortes escondidos.
+        if (video.videoWidth && video.videoHeight) {
+            el("preview").style.aspectRatio = video.videoWidth + " / " + video.videoHeight;
+        }
+    }, { once: true });
+
     el("btn-activar-camara").hidden = true;
     el("btn-disparar").hidden = false;
+    prepararZoom();
     avisoCelular("Tocá el botón rojo para tomar la foto.");
+}
+
+// Zoom por recorte: el centro del cuadro, dividido por el factor. Es lo que
+// hace que el zoom funcione en cualquier teléfono, aunque el dispositivo no
+// sepa hacer zoom por su cuenta.
+function recorteCentrado(anchoVideo, altoVideo, factor) {
+    const ancho = anchoVideo / factor;
+    const alto = altoVideo / factor;
+    return { x: (anchoVideo - ancho) / 2, y: (altoVideo - alto) / 2, ancho, alto };
+}
+
+function formatearZoom(valor) {
+    return (Number.isInteger(valor) ? valor : valor.toFixed(1)) + "×";
+}
+
+function prepararZoom() {
+    const pista = streamCamara ? streamCamara.getVideoTracks()[0] : null;
+    const capacidades = (pista && pista.getCapabilities && pista.getCapabilities()) || {};
+
+    if (capacidades.zoom && capacidades.zoom.max > capacidades.zoom.min) {
+        // El teléfono sabe hacer zoom: mejor, porque no se pierde nada.
+        pistaCamara = pista;
+        modoZoom = "nativo";
+        const desde = capacidades.zoom.min;
+        const hasta = capacidades.zoom.max;
+        nivelesZoom = Array.from({ length: 5 }, (_, i) => desde + ((hasta - desde) * i) / 4);
+    } else {
+        pistaCamara = null;
+        modoZoom = "digital";
+        nivelesZoom = NIVELES_ZOOM_DIGITAL.slice();
+    }
+
+    zoomActual = 0;
+    aplicarZoom();
+    el("zoom-controles").hidden = false;
+}
+
+async function aplicarZoom() {
+    const valor = nivelesZoom[zoomActual];
+
+    if (modoZoom === "nativo") {
+        try {
+            await pistaCamara.applyConstraints({ advanced: [{ zoom: valor }] });
+            el("video").style.transform = "";
+        } catch {
+            // Dijo que sabía y no aceptó: se cae al recorte, que siempre anda.
+            modoZoom = "digital";
+            nivelesZoom = NIVELES_ZOOM_DIGITAL.slice();
+            zoomActual = 0;
+            aplicarZoom();
+            return;
+        }
+    } else {
+        zoomDigital = valor;
+        // La previa se agranda igual que el recorte: lo que ves es lo que sale.
+        el("video").style.transform = valor > 1 ? "scale(" + valor + ")" : "";
+    }
+
+    el("zoom-valor").textContent = formatearZoom(valor);
+    el("btn-zoom-menos").disabled = zoomActual === 0;
+    el("btn-zoom-mas").disabled = zoomActual === nivelesZoom.length - 1;
+}
+
+function moverZoom(paso) {
+    const destino = Math.min(nivelesZoom.length - 1, Math.max(0, zoomActual + paso));
+    if (destino === zoomActual) return;
+    zoomActual = destino;
+    aplicarZoom();
 }
 
 // El cuadro se copia con el lado mayor en 1600 px, que para una foto de trabajo
@@ -295,11 +382,18 @@ async function comprimir(calidad) {
     const video = el("video");
     if (!video.videoWidth || !video.videoHeight) return null;
 
-    const escala = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    const factor = modoZoom === "digital" ? zoomDigital : 1;
+    const corte = recorteCentrado(video.videoWidth, video.videoHeight, factor);
+    const escala = Math.min(1, 1600 / Math.max(corte.ancho, corte.alto));
+
     const lona = document.createElement("canvas");
-    lona.width = Math.round(video.videoWidth * escala);
-    lona.height = Math.round(video.videoHeight * escala);
-    lona.getContext("2d").drawImage(video, 0, 0, lona.width, lona.height);
+    lona.width = Math.round(corte.ancho * escala);
+    lona.height = Math.round(corte.alto * escala);
+    lona.getContext("2d").drawImage(
+        video,
+        corte.x, corte.y, corte.ancho, corte.alto,
+        0, 0, lona.width, lona.height
+    );
 
     return await new Promise((resolver) => lona.toBlob(resolver, "image/jpeg", calidad));
 }
@@ -374,6 +468,8 @@ document.addEventListener("DOMContentLoaded", () => {
     el("btn-borrar").addEventListener("click", borrarFoto);
     el("btn-activar-camara").addEventListener("click", activarCamara);
     el("btn-disparar").addEventListener("click", disparar);
+    el("btn-zoom-menos").addEventListener("click", () => moverZoom(-1));
+    el("btn-zoom-mas").addEventListener("click", () => moverZoom(1));
 
     // Última red: si lo que llegó no se puede mostrar, no se deja un cuadro
     // roto con botón de guardar. (El Worker ya filtra por los dos primeros
