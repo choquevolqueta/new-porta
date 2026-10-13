@@ -19,7 +19,11 @@ function cors(origin) {
   return {
     "Access-Control-Allow-Origin": ORIGENES.includes(origin) ? origin : ORIGENES[0],
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    // X-Token tiene que estar acá: el navegador pregunta antes de mandar un
+    // encabezado propio, y si no está en la lista bloquea la subida entera.
+    "Access-Control-Allow-Headers": "Content-Type, X-Token",
+    // Para que el celular no pregunte de nuevo antes de cada foto.
+    "Access-Control-Max-Age": "600",
     Vary: "Origin",
   };
 }

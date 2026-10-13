@@ -159,6 +159,26 @@ test("no se acepta un cuerpo vacío ni una foto enorme", async () => {
   await cerrar(pc);
 });
 
+test("el preflight permite el encabezado del token", async () => {
+  // El navegador hace un OPTIONS antes de subir, porque la subida lleva el
+  // encabezado X-Token. Si no está en Access-Control-Allow-Headers, bloquea el
+  // pedido y el celular muestra "no se pudo subir la foto". Los tests de Node
+  // no hacen preflight: por eso este test existe.
+  const r = await fetch(`${API}/upload/ABCDEFGH`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://choquevolqueta.com",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,x-token",
+    },
+  });
+  assert.equal(r.status, 204);
+  const permitidos = (r.headers.get("access-control-allow-headers") ?? "").toLowerCase();
+  assert.match(permitidos, /x-token/, `el preflight permite: "${permitidos}"`);
+  assert.match(permitidos, /content-type/);
+  assert.equal(r.headers.get("access-control-allow-origin"), "https://choquevolqueta.com");
+});
+
 test("un cuerpo enorme se rechaza antes de tragárselo", async () => {
   // 20 MB con el tamaño declarado en la cabecera: el Worker tiene que mirar el
   // Content-Length y cortar, no bufferizar 20 MB para después decir que no.
