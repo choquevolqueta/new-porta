@@ -27,3 +27,6 @@ worker/.wrangler/
 
 # Guía local para agentes: no va al repo público
 AGENTS.md
+
+# Diseño y planes del proceso: quedan solo en local
+docs/superpowers/
