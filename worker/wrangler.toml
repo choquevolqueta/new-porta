@@ -2,6 +2,12 @@ name = "tunel-fotos"
 main = "src/index.js"
 compatibility_date = "2026-10-13"
 
+# Sin URL de workers.dev: el Worker vive solo en su dominio propio. Además de
+# ser lo que queremos, evita el requisito de tener activado el subdominio
+# workers.dev en la cuenta.
+workers_dev = false
+preview_urls = false
+
 [[durable_objects.bindings]]
 name = "SESIONES"
 class_name = "Sesion"
@@ -16,3 +22,9 @@ new_sqlite_classes = ["Sesion", "Limite"]
 
 [vars]
 TTL_SESION_MS = "1800000"
+
+# El dominio propio del Worker. Con esto, `wrangler deploy` crea el registro DNS
+# y el certificado solo; el apex y el `www` no se tocan (siguen DNS-only).
+[[routes]]
+pattern = "tunel.choquevolqueta.com"
+custom_domain = true
