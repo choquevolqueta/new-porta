@@ -46,6 +46,8 @@ const translations = {
         'services.s2.desc': 'Conecto tus herramientas y elimino tareas repetitivas: pedidos, citas, plantillas, notificaciones.',
         'services.s3.title': 'Agentes a medida',
         'services.s3.desc': 'Un asistente con IA propio de tu negocio, entrenado con lo que sabés, para lo que necesites.',
+        'services.s4.title': 'Videos profesionales con IA',
+        'services.s4.desc': 'Spots, anuncios y piezas para redes, generados con IA y listos para publicar. Sin equipo de producción, sin cámara, sin actores.',
         'contact.cta': 'Escribime por Telegram'
     },
     en: {
@@ -95,6 +97,8 @@ const translations = {
         'services.s2.desc': 'I connect your tools and remove repetitive tasks: orders, appointments, templates, notifications.',
         'services.s3.title': 'Custom agents',
         'services.s3.desc': 'An AI assistant built for your business, trained on what you know, for whatever you need.',
+        'services.s4.title': 'Professional AI video',
+        'services.s4.desc': 'Spots, ads and social pieces generated with AI, ready to publish. No production crew, no camera, no actors.',
         'contact.cta': "Message me on Telegram"
     }
 };
