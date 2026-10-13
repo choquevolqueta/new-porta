@@ -15,6 +15,10 @@ var PAGINA = location.origin + location.pathname;
 // Se puede bajar desde la consola para no esperar 10 minutos en una prueba.
 var borradoMs = 10 * 60 * 1000;
 
+// El mismo tope que aplica el Worker. Está repetido a propósito: son dos
+// despliegues distintos y no hay build que comparta el número.
+var MAX_JPEG_BYTES = 600 * 1024;
+
 var codigoActual = null;
 var socketPc = null;
 var intentosReconexion = 0;
@@ -201,11 +205,118 @@ async function arrancarComoPc() {
     conectarComoPc(codigoActual);
 }
 
-// El rol emisor se completa en el paso siguiente de la implementación.
+/* ------------------------------------------------- el celular emisor */
+
+var streamCamara = null;
+var socketEmisor = null;
+
+function avisoCelular(texto) {
+    el("aviso-celular").textContent = texto ?? "";
+}
+
+function conectarComoEmisor(codigo) {
+    const ws = new WebSocket(API_BASE.replace(/^http/, "ws") + "/ws/" + codigo + "?rol=emisor");
+    socketEmisor = ws;
+
+    ws.onclose = (evento) => {
+        el("btn-disparar").disabled = true;
+        if (evento.code === 4001) {
+            avisoCelular("Esta sesión ya tiene un celular conectado. Pedile a la PC un código nuevo.");
+            return;
+        }
+        // Cualquier otro cierre significa que la PC no está del otro lado.
+        avisoCelular("La PC se desconectó. Volvé a escanear el código.");
+    };
+}
+
+function mensajeDeCamara(error) {
+    if (error && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
+        return "El navegador no tiene permiso para la cámara. En Chrome: tocá el candado de la barra de direcciones → Permisos → Cámara → Permitir, y recargá.";
+    }
+    if (error && error.name === "NotFoundError") {
+        return "Este dispositivo no tiene ninguna cámara disponible.";
+    }
+    return "No se pudo abrir la cámara. Cerrá otras apps que la estén usando e intentá otra vez.";
+}
+
+async function activarCamara() {
+    el("btn-activar-camara").disabled = true;
+    try {
+        streamCamara = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    } catch (error) {
+        el("btn-activar-camara").disabled = false;
+        avisoCelular(mensajeDeCamara(error));
+        return;
+    }
+    el("video").srcObject = streamCamara;
+    el("btn-activar-camara").hidden = true;
+    el("btn-disparar").hidden = false;
+    avisoCelular("Tocá el botón rojo para tomar la foto.");
+}
+
+// El cuadro se copia con el lado mayor en 1600 px, que para una foto de trabajo
+// sobra, y se exporta en JPEG bajando la calidad solo si hace falta.
+async function comprimir(calidad) {
+    const video = el("video");
+    if (!video.videoWidth || !video.videoHeight) return null;
+
+    const escala = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    const lona = document.createElement("canvas");
+    lona.width = Math.round(video.videoWidth * escala);
+    lona.height = Math.round(video.videoHeight * escala);
+    lona.getContext("2d").drawImage(video, 0, 0, lona.width, lona.height);
+
+    return await new Promise((resolver) => lona.toBlob(resolver, "image/jpeg", calidad));
+}
+
+async function disparar() {
+    const boton = el("btn-disparar");
+    boton.disabled = true;
+    avisoCelular("Subiendo la foto…");
+
+    try {
+        let foto = await comprimir(0.8);
+        for (const calidad of [0.6, 0.4]) {
+            if (foto && foto.size <= MAX_JPEG_BYTES) break;
+            foto = await comprimir(calidad);
+        }
+
+        if (!foto) {
+            avisoCelular("La cámara todavía no está lista. Esperá un segundo e intentá otra vez.");
+            return;
+        }
+        if (foto.size > MAX_JPEG_BYTES) {
+            avisoCelular("La foto quedó demasiado grande para el túnel. Probá otra vez.");
+            return;
+        }
+
+        const respuesta = await fetch(
+            API_BASE + "/upload/" + codigoActual + "?at=" + new Date().toISOString(),
+            { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: foto }
+        );
+
+        if (respuesta.ok) {
+            avisoCelular("Listo, la foto ya está en la PC. Podés tomar otra.");
+        } else if (respuesta.status === 413) {
+            avisoCelular("La foto pesa más de lo que el túnel acepta. Probá otra vez.");
+        } else if (respuesta.status === 409 || respuesta.status === 404) {
+            avisoCelular("La sesión ya no está disponible. Volvé a escanear el código de la PC.");
+        } else {
+            avisoCelular("No se pudo subir la foto. Intentá otra vez.");
+        }
+    } catch {
+        avisoCelular("No se pudo subir la foto. Intentá otra vez.");
+    } finally {
+        boton.disabled = false;
+    }
+}
+
 function arrancarComoEmisor(codigo) {
+    codigoActual = codigo;
     el("pantalla-pc").hidden = true;
     el("pantalla-celular").hidden = false;
-    el("aviso-celular").textContent = "Sesión " + codigo;
+    avisoCelular("Activá la cámara y tomá la foto: aparece en la pantalla de la PC.");
+    conectarComoEmisor(codigo);
 }
 
 function arrancar() {
@@ -217,5 +328,7 @@ function arrancar() {
 document.addEventListener("DOMContentLoaded", () => {
     el("btn-guardar").addEventListener("click", guardarFoto);
     el("btn-borrar").addEventListener("click", borrarFoto);
+    el("btn-activar-camara").addEventListener("click", activarCamara);
+    el("btn-disparar").addEventListener("click", disparar);
     arrancar();
 });
