@@ -98,6 +98,12 @@
     animation: tunel-latido 1.4s ease-in-out infinite;
 }
 
+/* Con el celular del otro lado, el punto deja de latir. */
+.tunel-estado.esta-conectado .tunel-punto {
+    background: #ffffff;
+    animation: none;
+}
+
 @keyframes tunel-latido {
     50% { opacity: 0.2; }
 }
