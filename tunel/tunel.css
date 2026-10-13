@@ -1,0 +1,263 @@
+/* ================================================================= */
+/* TÚNEL DE FOTOS — solo el módulo.                                  */
+/* El resto (fuente, paleta, mayúsculas) viene de ../style.css       */
+/* ================================================================= */
+
+/* `hidden` tiene que ganarle a los display de acá abajo. */
+[hidden] {
+    display: none !important;
+}
+
+/* 1. BARRA PROPIA (no la del portafolio: sus anclas no funcionan acá) */
+.tunel-barra {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px 30px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.tunel-marca {
+    font-size: 1rem;
+    letter-spacing: 2px;
+    text-decoration: none;
+}
+
+.tunel-rotulo {
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    color: #FF0000;
+}
+
+/* 2. PANTALLAS */
+.tunel-main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 30px 80px;
+}
+
+.tunel-titulo {
+    font-size: clamp(1.3rem, 4vw, 2.1rem);
+    line-height: 1.15;
+    margin: 0 0 12px;
+}
+
+.tunel-instruccion {
+    color: #FF0000;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    line-height: 1.7;
+    margin: 0 0 26px;
+    max-width: 460px;
+}
+
+/* 3. EL QR */
+.tunel-qr {
+    display: inline-block;
+    max-width: 100%;
+    background: #ffffff;
+    padding: 16px;
+    box-shadow: 12px 12px 0 #FF0000;
+}
+
+.tunel-qr canvas {
+    display: block;
+    width: min(320px, 74vw);
+    height: auto;
+    aspect-ratio: 1 / 1;
+}
+
+.tunel-codigo {
+    font-size: 0.75rem;
+    letter-spacing: 3px;
+    margin: 26px 0 14px;
+}
+
+.tunel-codigo span {
+    color: #FF0000;
+}
+
+.tunel-estado {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid #ffffff;
+    padding: 8px 14px;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    margin: 0 0 16px;
+}
+
+.tunel-punto {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #FF0000;
+    animation: tunel-latido 1.4s ease-in-out infinite;
+}
+
+@keyframes tunel-latido {
+    50% { opacity: 0.2; }
+}
+
+.tunel-url {
+    font-size: 0.62rem;
+    letter-spacing: 1px;
+    line-height: 1.9;
+    opacity: 0.6;
+    max-width: 420px;
+    word-break: break-all;
+    margin: 0;
+}
+
+/* 4. LA FOTO RECIBIDA */
+.tunel-foto {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 26px;
+    margin-top: 36px;
+    padding-top: 26px;
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.tunel-foto-caja {
+    position: relative;
+    background: #111111;
+    border: 2px solid #ffffff;
+    max-width: 100%;
+}
+
+.tunel-foto-caja img {
+    display: block;
+    width: min(380px, 74vw);
+    height: auto;
+}
+
+.tunel-hora {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #FF0000;
+    color: #ffffff;
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    padding: 4px 8px;
+}
+
+.tunel-foto-lado {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.tunel-detalle {
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+    line-height: 2;
+    opacity: 0.75;
+    margin: 0 0 18px;
+}
+
+.tunel-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* 5. LA CÁMARA DEL CELULAR */
+.tunel-preview {
+    position: relative;
+    background: #111111;
+    border: 2px solid #ffffff;
+    box-shadow: 12px 12px 0 #FF0000;
+    max-width: 420px;
+    aspect-ratio: 3 / 4;
+    overflow: hidden;
+}
+
+.tunel-preview video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.tunel-aviso {
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+    line-height: 1.9;
+    color: #FF0000;
+    min-height: 1.2em;
+    max-width: 420px;
+}
+
+/* 6. BOTONES */
+.tunel-btn {
+    font: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 14px 26px;
+    background: transparent;
+    color: #ffffff;
+    border: 2px solid #ffffff;
+    cursor: pointer;
+}
+
+.tunel-btn:hover {
+    border-color: #FF0000;
+    color: #FF0000;
+}
+
+.tunel-btn-rojo {
+    background: #FF0000;
+    border-color: #FF0000;
+    color: #ffffff;
+}
+
+.tunel-btn-rojo:hover {
+    background: #000000;
+    color: #FF0000;
+}
+
+.tunel-btn:disabled {
+    opacity: 0.5;
+    cursor: progress;
+}
+
+.tunel-btn-ancho {
+    display: block;
+    width: 100%;
+    max-width: 420px;
+    margin-top: 20px;
+    padding: 18px;
+}
+
+/* 7. PANTALLAS CHICAS */
+@media (max-width: 480px) {
+    .tunel-barra {
+        padding: 14px 18px;
+    }
+
+    .tunel-main {
+        padding: 26px 18px 60px;
+    }
+
+    /* Sombras más chicas que el padding: si no, se cortan contra el borde. */
+    .tunel-qr,
+    .tunel-preview {
+        box-shadow: 8px 8px 0 #FF0000;
+    }
+
+    .tunel-qr {
+        padding: 12px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tunel-punto {
+        animation: none;
+    }
+}

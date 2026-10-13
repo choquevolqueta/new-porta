@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Túnel de fotos</title>
+    <meta name="description" content="Pasa una foto del celular a esta computadora, sin instalar nada.">
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="tunel.css">
+</head>
+<body>
+    <header class="tunel-barra">
+        <a class="tunel-marca" href="/">Alexander Cortez</a>
+        <span class="tunel-rotulo">Túnel de fotos</span>
+    </header>
+
+    <main class="tunel-main">
+        <!-- Rol PC: se anuncia como escucha y muestra el QR -->
+        <div id="pantalla-pc" class="tunel-pantalla">
+            <h1 class="tunel-titulo">Pasa una foto del celular a esta computadora</h1>
+            <p class="tunel-instruccion">Escanea este código con el celular</p>
+
+            <div class="tunel-qr">
+                <canvas id="qr" width="320" height="320"></canvas>
+            </div>
+
+            <p class="tunel-codigo">Código <span id="codigo">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span></p>
+
+            <p id="estado" class="tunel-estado">
+                <span class="tunel-punto"></span><span id="estado-texto">Esperando conexión</span>
+            </p>
+
+            <p id="qr-url" class="tunel-url"></p>
+
+            <div id="bloque-foto" class="tunel-foto" hidden>
+                <div class="tunel-foto-caja">
+                    <img id="foto" alt="Foto recibida del celular">
+                    <span id="foto-hora" class="tunel-hora"></span>
+                </div>
+                <div class="tunel-foto-lado">
+                    <p id="foto-detalle" class="tunel-detalle"></p>
+                    <div class="tunel-acciones">
+                        <button id="btn-guardar" class="tunel-btn tunel-btn-rojo" type="button">Guardar</button>
+                        <button id="btn-borrar" class="tunel-btn" type="button">Borrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rol celular: la cámara dentro de la página -->
+        <div id="pantalla-celular" class="tunel-pantalla" hidden>
+            <h1 class="tunel-titulo">Toma la foto acá</h1>
+            <p class="tunel-instruccion">Aparece en la pantalla de la PC. No se guarda en ningún servidor.</p>
+
+            <div class="tunel-preview">
+                <video id="video" playsinline autoplay muted></video>
+            </div>
+
+            <button id="btn-activar-camara" class="tunel-btn tunel-btn-rojo tunel-btn-ancho" type="button">Activar cámara</button>
+            <button id="btn-disparar" class="tunel-btn tunel-btn-rojo tunel-btn-ancho" type="button" hidden>Tomar la foto</button>
+
+            <p id="aviso-celular" class="tunel-aviso"></p>
+        </div>
+    </main>
+
+    <script src="vendor/qrcode.js"></script>
+    <script src="tunel.js" defer></script>
+</body>
+</html>
