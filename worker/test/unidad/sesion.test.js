@@ -49,6 +49,14 @@ test("tocarSesion corre el reloj y revive una sesión por expirar", () => {
   assert.equal(estaExpirada(s, t0 + TTL_SESION_MS + 1000), false);
 });
 
+test("la sesión se acuerda de su TTL, para poder bajarlo en las pruebas", () => {
+  const s = crearSesion(0, "ABCDEFGH", 2500);
+  assert.equal(s.ttl, 2500);
+  assert.equal(estaExpirada(s, 2499, s.ttl), false);
+  assert.equal(estaExpirada(s, 2500, s.ttl), true);
+  assert.equal(crearSesion(0).ttl, TTL_SESION_MS, "sin TTL explícito, el de siempre");
+});
+
 test("un segundo celular no entra mientras hay uno conectado", () => {
   const s = crearSesion(0);
   assert.deepEqual(registrarEmisor(s), { ok: true });
@@ -69,9 +77,19 @@ test("no se acepta un cuerpo vacío ni algo que no sea JPEG", () => {
   assert.deepEqual(puedeRecibirFoto(s, new Uint8Array([1, 2, 3]), "text/plain"), { ok: false, error: "tipo" });
 });
 
+test("no se acepta algo que dice ser JPEG pero no empieza como JPEG", () => {
+  const s = crearSesion(0); s.pc = true;
+  assert.deepEqual(puedeRecibirFoto(s, new Uint8Array([0x41, 0x42, 0x43]), "image/jpeg"),
+    { ok: false, error: "tipo" }, "texto declarado como image/jpeg");
+  assert.deepEqual(puedeRecibirFoto(s, new Uint8Array([0xFF, 0xD8]), "image/jpeg"), { ok: true });
+});
+
 test("no se acepta una foto por encima del tope", () => {
   const s = crearSesion(0); s.pc = true;
-  assert.deepEqual(puedeRecibirFoto(s, new Uint8Array(MAX_JPEG_BYTES), "image/jpeg"), { ok: true });
-  assert.deepEqual(puedeRecibirFoto(s, new Uint8Array(MAX_JPEG_BYTES + 1), "image/jpeg"),
-    { ok: false, error: "grande" });
+  // Entradas con encabezado de JPEG de verdad: si no, las rechazaría el chequeo
+  // del magic number y el test no estaría midiendo el tope.
+  const alTope = new Uint8Array(MAX_JPEG_BYTES); alTope.set([0xFF, 0xD8]);
+  const pasado = new Uint8Array(MAX_JPEG_BYTES + 1); pasado.set([0xFF, 0xD8]);
+  assert.deepEqual(puedeRecibirFoto(s, alTope, "image/jpeg"), { ok: true });
+  assert.deepEqual(puedeRecibirFoto(s, pasado, "image/jpeg"), { ok: false, error: "grande" });
 });

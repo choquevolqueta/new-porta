@@ -4,7 +4,7 @@
 //   POST /upload/:codigo?at=<ISO>           → { ok: true }
 //   GET  /health                            → { ok: true }
 
-import { generarCodigo, normalizarCodigo } from "./sesion.js";
+import { generarCodigo, normalizarCodigo, MAX_JPEG_BYTES, TTL_SESION_MS } from "./sesion.js";
 
 export { Sesion, Limite } from "./durable.js";
 
@@ -30,6 +30,8 @@ const json = (cuerpo, status, origin) =>
     headers: { "Content-Type": "application/json", ...cors(origin) },
   });
 
+const ttlDe = (env) => Number(env?.TTL_SESION_MS ?? TTL_SESION_MS);
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -39,7 +41,11 @@ export default {
       return new Response(null, { status: 204, headers: cors(origin) });
     }
 
-    if (url.pathname === "/health") return json({ ok: true }, 200, origin);
+    if (url.pathname === "/health") {
+      // El TTL activo se publica para que el test de vencimiento sepa si el
+      // server está configurado con uno corto, en lugar de fallar sin explicar.
+      return json({ ok: true, ttl: ttlDe(env) }, 200, origin);
+    }
 
     if (url.pathname === "/session" && request.method === "POST") {
       const ip = request.headers.get("CF-Connecting-IP") ?? "local";
@@ -57,7 +63,7 @@ export default {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ codigo }),
+          body: JSON.stringify({ codigo, ttl: ttlDe(env) }),
         },
       );
       const datos = await creada.json();
@@ -75,15 +81,30 @@ export default {
         return stub.fetch(request);
       }
 
+      // El tamaño se mira antes de leer nada: si el cuerpo se bufferiza entero
+      // primero, el tope acota el resultado pero no el costo (20 MB entran
+      // igual). No se cancela el stream a mano: en esta versión de wrangler eso
+      // termina en "Network connection lost" y un 500.
+      const declarado = Number(request.headers.get("Content-Length") ?? 0);
+      if (declarado > MAX_JPEG_BYTES) {
+        return json({ error: "grande" }, 413, origin);
+      }
+
       // El cuerpo se drena siempre, incluso cuando se rechaza: un pedido con el
       // stream sin consumir hace que el runtime avise "Can't read from request
       // stream after response has been sent".
       const cuerpo = await request.arrayBuffer();
       if (codigo.length !== 8) return json({ error: "sin-sesion" }, 404, origin);
 
+      // Se reenvía con todas las cabeceras (el token del emisor viaja en una),
+      // menos las que dependen del cuerpo original.
+      const cabeceras = new Headers(request.headers);
+      cabeceras.delete("content-length");
+      cabeceras.delete("host");
+
       const respuesta = await stub.fetch(new Request(request.url, {
         method: "POST",
-        headers: { "Content-Type": request.headers.get("Content-Type") ?? "" },
+        headers: cabeceras,
         body: cuerpo,
       }));
 

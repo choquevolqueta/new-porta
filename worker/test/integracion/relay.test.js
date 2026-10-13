@@ -39,6 +39,23 @@ async function nuevaSesion() {
   return (await r.json()).codigo;
 }
 
+// El emisor recibe su token al conectarse y lo tiene que presentar para subir.
+async function abrirEmisor(codigo) {
+  const ws = await abrir(`/ws/${codigo}?rol=emisor`);
+  const bienvenida = await proximo(ws);
+  assert.equal(bienvenida.type, "bienvenida", "el emisor recibe su token primero");
+  return { ws, token: bienvenida.token };
+}
+
+const subir = (codigo, token, at) => fetch(
+  `${API}/upload/${codigo}${at ? "?at=" + encodeURIComponent(at) : ""}`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "image/jpeg", ...(token ? { "X-Token": token } : {}) },
+    body: JPEG,
+  }
+);
+
 const JPEG = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0xFF, 0xD9]);
 
 test("health responde", async () => {
@@ -55,14 +72,10 @@ test("la PC recibe la foto que sube el celular", async () => {
   const pc = await abrir(`/ws/${code}?rol=pc`);
   assert.deepEqual(await proximo(pc), { type: "estado", emisor: false });
 
-  const cel = await abrir(`/ws/${code}?rol=emisor`);
+  const { ws: cel, token } = await abrirEmisor(code);
   assert.deepEqual(await proximo(pc), { type: "estado", emisor: true });
 
-  const subida = await fetch(`${API}/upload/${code}?at=2026-10-13T21:04:11-05:00`, {
-    method: "POST",
-    headers: { "Content-Type": "image/jpeg" },
-    body: JPEG,
-  });
+  const subida = await subir(code, token, "2026-10-13T21:04:11-05:00");
   assert.equal(subida.status, 200);
 
   const foto = await proximo(pc);
@@ -79,54 +92,77 @@ test("el mismo QR sirve para el celular siguiente", async () => {
   const code = await nuevaSesion();
   const pc = await abrir(`/ws/${code}?rol=pc`);
   await proximo(pc);
-  const uno = await abrir(`/ws/${code}?rol=emisor`);
+  const uno = await abrirEmisor(code);
   await proximo(pc);
-  await cerrar(uno);
+  await cerrar(uno.ws);
   await proximo(pc);
-  const dos = await abrir(`/ws/${code}?rol=emisor`);
+  const dos = await abrirEmisor(code);
   assert.deepEqual(await proximo(pc), { type: "estado", emisor: true });
-  await cerrar(dos);
+  assert.equal((await subir(code, dos.token)).status, 200, "el token del segundo sirve");
+  assert.equal((await subir(code, uno.token)).status, 409, "el token del primero ya no");
+  await cerrar(dos.ws);
   await cerrar(pc);
 });
 
-test("un segundo celular concurrente se cae con 4001", async () => {
+test("un segundo celular concurrente se cae con 4001 y no puede subir nada", async () => {
   const code = await nuevaSesion();
   const pc = await abrir(`/ws/${code}?rol=pc`);
   await proximo(pc);
-  const uno = await abrir(`/ws/${code}?rol=emisor`);
+  const uno = await abrirEmisor(code);
   await proximo(pc);
+
   const dos = await abrir(`/ws/${code}?rol=emisor`);
-  assert.equal(await cerrar(dos), 4001);
-  await cerrar(uno);
+  assert.equal(await cerrar(dos), 4001, "al rechazado se le cierra el socket");
+
+  assert.equal((await subir(code, null)).status, 409, "sin token no entra");
+  assert.equal((await subir(code, "TOKEN-INVENTADO")).status, 409, "un token inventado tampoco");
+  assert.equal((await subir(code, uno.token)).status, 200, "el dueño del cupo sí puede");
+
+  await cerrar(uno.ws);
   await cerrar(pc);
 });
 
 test("un código que no existe no abre ni acepta nada", async () => {
-  const r = await fetch(`${API}/upload/ZZZZZZZZ`, { method: "POST", body: JPEG });
-  assert.equal(r.status, 404);
+  assert.equal((await subir("ZZZZZZZZ", null)).status, 404);
   await assert.rejects(() => abrir("/ws/ZZZZZZZZ?rol=pc"));
 });
 
 test("un código con forma rara tampoco acepta la foto", async () => {
   // Un código que ni siquiera pasa la validación del Worker: el cuerpo se drena
   // igual, para que el runtime no se queje de un stream sin consumir.
-  const r = await fetch(`${API}/upload/abc`, { method: "POST", body: JPEG });
-  assert.equal(r.status, 404);
+  assert.equal((await subir("abc", null)).status, 404);
 });
 
 test("no se acepta una foto sin PC escuchando", async () => {
   const code = await nuevaSesion();
-  const r = await fetch(`${API}/upload/${code}`, { method: "POST", body: JPEG });
-  assert.equal(r.status, 409);
+  assert.equal((await subir(code, null)).status, 409);
 });
 
 test("no se acepta un cuerpo vacío ni una foto enorme", async () => {
   const code = await nuevaSesion();
   const pc = await abrir(`/ws/${code}?rol=pc`);
   await proximo(pc);
-  const vacio = await fetch(`${API}/upload/${code}`, { method: "POST", body: new Uint8Array(0) });
+  const { token } = await abrirEmisor(code);
+  await proximo(pc);
+
+  const vacio = await fetch(`${API}/upload/${code}`, {
+    method: "POST", headers: { "Content-Type": "image/jpeg", "X-Token": token }, body: new Uint8Array(0),
+  });
   assert.equal(vacio.status, 413);
-  const enorme = await fetch(`${API}/upload/${code}`, { method: "POST", body: new Uint8Array(700 * 1024) });
-  assert.equal(enorme.status, 413);
+
+  const grande = new Uint8Array(700 * 1024);
+  grande.set([0xFF, 0xD8]);
+  const enorme = await fetch(`${API}/upload/${code}`, {
+    method: "POST", headers: { "Content-Type": "image/jpeg", "X-Token": token }, body: grande,
+  });
+  assert.equal(enorme.status, 413, "es un JPEG de 700 KB: pasa el tipo y choca con el tope");
   await cerrar(pc);
+});
+
+test("un cuerpo enorme se rechaza antes de tragárselo", async () => {
+  // 20 MB con el tamaño declarado en la cabecera: el Worker tiene que mirar el
+  // Content-Length y cortar, no bufferizar 20 MB para después decir que no.
+  const enorme = new Uint8Array(20 * 1024 * 1024);
+  const r = await fetch(`${API}/upload/ZZZZZZZZ`, { method: "POST", body: enorme });
+  assert.equal(r.status, 413, "por tamaño, no por sesión inexistente");
 });

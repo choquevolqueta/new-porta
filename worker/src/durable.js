@@ -37,10 +37,14 @@ export class Sesion {
     this.sesion = null;
     this.pc = null;
     this.emisor = null;
+    // El token que tiene que presentar el emisor para poder subir. Sin esto,
+    // un celular al que se le cerró el socket (4001) igual podía meterle una
+    // foto a la PC, porque el /upload no sabía quién estaba subiendo.
+    this.tokenEmisor = null;
   }
 
   get ttl() {
-    return Number(this.env?.TTL_SESION_MS ?? TTL_SESION_MS);
+    return this.sesion?.ttl ?? Number(this.env?.TTL_SESION_MS ?? TTL_SESION_MS);
   }
 
   async fetch(request) {
@@ -80,24 +84,38 @@ export class Sesion {
     }
     this.pc = null;
     this.emisor = null;
+    this.tokenEmisor = null;
   }
 
   async crear(request) {
-    const { codigo } = await request.json();
+    const { codigo, ttl } = await request.json();
     const ahora = Date.now();
     if (!this.sesion) {
-      this.sesion = crearSesion(ahora, codigo);
+      this.sesion = crearSesion(ahora, codigo, ttl);
     }
     await this.programarAlarma(ahora);
     return json({ codigo: this.sesion.codigo }, 200);
   }
 
-  avisar(socket) {
+  generarToken() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Un socket puede estar muerto sin que haya llegado su evento de cierre: si
+  // el envío falla se dice, en vez de tirar la excepción hacia el fetch.
+  enviar(socket, mensaje) {
     try {
-      socket.send(JSON.stringify({ type: "estado", emisor: !!this.sesion?.emisor }));
+      socket.send(JSON.stringify(mensaje));
+      return true;
     } catch {
-      // El socket ya se fue: su propio evento de cierre lo limpia.
+      return false;
     }
+  }
+
+  avisar(socket) {
+    this.enviar(socket, { type: "estado", emisor: !!this.sesion?.emisor });
   }
 
   async abrirSocket(request, url) {
@@ -122,6 +140,8 @@ export class Sesion {
         return new Response(null, { status: 101, webSocket: cliente });
       }
       this.emisor = servidor;
+      this.tokenEmisor = this.generarToken();
+      this.enviar(servidor, { type: "bienvenida", token: this.tokenEmisor });
     }
 
     tocarSesion(this.sesion, Date.now());
@@ -143,6 +163,7 @@ export class Sesion {
       // mensaje que ya nadie podría entregar.
       const cel = this.emisor;
       this.emisor = null;
+      this.tokenEmisor = null;
       if (this.sesion) liberarEmisor(this.sesion);
       try {
         cel?.close(4003, "la pc se desconecto");
@@ -151,6 +172,7 @@ export class Sesion {
     }
     if (this.emisor !== servidor) return;
     this.emisor = null;
+    this.tokenEmisor = null;
     if (this.sesion) liberarEmisor(this.sesion);
     if (this.pc) this.avisar(this.pc);
   }
@@ -165,13 +187,20 @@ export class Sesion {
     const tipo = request.headers.get("Content-Type") ?? "";
     const puede = puedeRecibirFoto(this.sesion, bytes, tipo);
     if (!puede.ok) return json({ error: puede.error }, puede.error === "sin-pc" ? 409 : 413);
+
+    // Sin el token del emisor aceptado, nada entra: ni un cliente ajeno, ni un
+    // celular al que se le cerró el socket por ocupado.
+    if (!this.emisor || !this.tokenEmisor || request.headers.get("X-Token") !== this.tokenEmisor) {
+      return json({ error: "sin-token" }, 409);
+    }
     if (!this.pc) return json({ error: "sin-pc" }, 409);
 
-    this.pc.send(JSON.stringify({
+    const entregada = this.enviar(this.pc, {
       type: "foto",
       at: url.searchParams.get("at"),
       jpeg: aBase64(bytes),
-    }));
+    });
+    if (!entregada) return json({ error: "sin-pc" }, 409);
 
     tocarSesion(this.sesion, Date.now());
     await this.programarAlarma(Date.now());

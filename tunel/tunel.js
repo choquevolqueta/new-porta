@@ -175,6 +175,8 @@ function mostrarFoto(mensaje) {
 
     el("foto").src = urlFoto;
     el("foto-hora").textContent = horaDe(atFoto);
+    el("foto-detalle").textContent =
+        "Recibida a las " + horaDe(atFoto) + ". Se borra sola en 10 minutos si no la guardás.";
     pintarEscenario();
 
     clearTimeout(temporizadorBorrado);
@@ -200,6 +202,7 @@ function borrarFoto() {
     }
     atFoto = null;
     el("foto").removeAttribute("src");
+    el("foto-detalle").textContent = "";
     pintarEscenario();
 }
 
@@ -228,6 +231,7 @@ async function arrancarComoPc() {
 
 var streamCamara = null;
 var socketEmisor = null;
+var tokenEmisor = null;
 
 function avisoCelular(texto) {
     el("aviso-celular").textContent = texto ?? "";
@@ -236,6 +240,18 @@ function avisoCelular(texto) {
 function conectarComoEmisor(codigo) {
     const ws = new WebSocket(API_BASE.replace(/^http/, "ws") + "/ws/" + codigo + "?rol=emisor");
     socketEmisor = ws;
+
+    // El token que la PC espera con cada foto: sin él, cualquiera con el código
+    // podría meterle una imagen, y un celular rechazado también.
+    ws.onmessage = (evento) => {
+        let mensaje;
+        try {
+            mensaje = JSON.parse(evento.data);
+        } catch {
+            return;
+        }
+        if (mensaje.type === "bienvenida") tokenEmisor = mensaje.token;
+    };
 
     ws.onclose = (evento) => {
         el("btn-disparar").disabled = true;
@@ -294,6 +310,11 @@ async function disparar() {
     avisoCelular("Subiendo la foto…");
 
     try {
+        if (!tokenEmisor) {
+            avisoCelular("Todavía se está emparejando con la PC. Esperá un segundo e intentá otra vez.");
+            return;
+        }
+
         let foto = await comprimir(0.8);
         for (const calidad of [0.6, 0.4]) {
             if (foto && foto.size <= MAX_JPEG_BYTES) break;
@@ -311,7 +332,11 @@ async function disparar() {
 
         const respuesta = await fetch(
             API_BASE + "/upload/" + codigoActual + "?at=" + new Date().toISOString(),
-            { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: foto }
+            {
+                method: "POST",
+                headers: { "Content-Type": "image/jpeg", "X-Token": tokenEmisor },
+                body: foto,
+            }
         );
 
         if (respuesta.ok) {
@@ -349,5 +374,16 @@ document.addEventListener("DOMContentLoaded", () => {
     el("btn-borrar").addEventListener("click", borrarFoto);
     el("btn-activar-camara").addEventListener("click", activarCamara);
     el("btn-disparar").addEventListener("click", disparar);
+
+    // Última red: si lo que llegó no se puede mostrar, no se deja un cuadro
+    // roto con botón de guardar. (El Worker ya filtra por los dos primeros
+    // bytes, así que esto es para lo imprevisible.)
+    el("foto").addEventListener("error", () => {
+        if (!urlFoto) return;
+        borrarFoto();
+        textoDeEstado = "Llegó algo que no se pudo mostrar";
+        pintarEscenario();
+    });
+
     arrancar();
 });

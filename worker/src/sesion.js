@@ -25,9 +25,12 @@ export function normalizarCodigo(texto) {
     .join("");
 }
 
-export function crearSesion(ahora, codigo = "") {
+export function crearSesion(ahora, codigo = "", ttl = TTL_SESION_MS) {
   return {
     codigo,
+    // El TTL viaja con la sesión: así el Worker puede bajarlo con `--var` en
+    // las pruebas, que es la única forma de probar el vencimiento de verdad.
+    ttl,
     ultimaActividad: ahora,
     pc: false,
     emisor: false,
@@ -59,6 +62,9 @@ export function puedeRecibirFoto(sesion, bytes, tipo) {
   if (!sesion.pc) return { ok: false, error: "sin-pc" };
   if (!bytes || bytes.length === 0) return { ok: false, error: "vacia" };
   if (!tipo || !String(tipo).startsWith("image/jpeg")) return { ok: false, error: "tipo" };
+  // El tipo lo declara el cliente; esto no: todo JPEG empieza con FF D8. Sin
+  // este chequeo, la PC muestra una imagen rota con botón de guardar.
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return { ok: false, error: "tipo" };
   if (bytes.length > MAX_JPEG_BYTES) return { ok: false, error: "grande" };
   return { ok: true };
 }
