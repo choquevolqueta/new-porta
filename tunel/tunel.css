@@ -35,13 +35,13 @@
 .tunel-main {
     max-width: 900px;
     margin: 0 auto;
-    padding: 40px 30px 80px;
+    padding: 34px 30px 46px;
 }
 
 .tunel-titulo {
     font-size: clamp(1.3rem, 4vw, 2.1rem);
     line-height: 1.15;
-    margin: 0 0 12px;
+    margin: 0 0 26px;
 }
 
 .tunel-instruccion {
@@ -64,7 +64,7 @@
 
 .tunel-qr canvas {
     display: block;
-    width: min(320px, 74vw);
+    width: min(230px, 74vw);
     height: auto;
     aspect-ratio: 1 / 1;
 }
@@ -118,15 +118,54 @@
     margin: 0;
 }
 
-/* 4. LA FOTO RECIBIDA */
-.tunel-foto {
+/* 4. EL TABLERO: EL QR A LA IZQUIERDA, EL ESTADO A LA DERECHA */
+.tunel-tablero {
     display: flex;
     align-items: flex-start;
     flex-wrap: wrap;
-    gap: 26px;
-    margin-top: 36px;
-    padding-top: 26px;
-    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    gap: 36px;
+}
+
+.tunel-lado-qr {
+    flex: 0 0 auto;
+}
+
+.tunel-lado-estado {
+    flex: 1 1 320px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 18px;
+}
+
+.tunel-aviso-caja {
+    border: 1px dashed rgba(255, 255, 255, 0.5);
+    padding: 22px 24px;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    line-height: 1.7;
+    max-width: 420px;
+}
+
+.tunel-aviso-caja p {
+    margin: 0;
+}
+
+.tunel-nota {
+    margin-top: 10px !important;
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+    opacity: 0.6;
+}
+
+/* 5. LA FOTO RECIBIDA (en la columna del estado) */
+.tunel-foto {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    max-width: 100%;
 }
 
 .tunel-foto-caja {
@@ -138,7 +177,7 @@
 
 .tunel-foto-caja img {
     display: block;
-    width: min(380px, 74vw);
+    width: min(420px, 100%);
     height: auto;
 }
 
@@ -151,11 +190,6 @@
     font-size: 0.6rem;
     letter-spacing: 1px;
     padding: 4px 8px;
-}
-
-.tunel-foto-lado {
-    flex: 1 1 220px;
-    min-width: 0;
 }
 
 .tunel-detalle {

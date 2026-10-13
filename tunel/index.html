@@ -18,30 +18,41 @@
         <!-- Rol PC: se anuncia como escucha y muestra el QR -->
         <div id="pantalla-pc" class="tunel-pantalla">
             <h1 class="tunel-titulo">Pasa una foto del celular a esta computadora</h1>
-            <p class="tunel-instruccion">Escanea este código con el celular</p>
 
-            <div class="tunel-qr">
-                <canvas id="qr" width="320" height="320"></canvas>
-            </div>
-
-            <p class="tunel-codigo">Código <span id="codigo">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span></p>
-
-            <p id="estado" class="tunel-estado">
-                <span class="tunel-punto"></span><span id="estado-texto">Esperando conexión</span>
-            </p>
-
-            <p id="qr-url" class="tunel-url"></p>
-
-            <div id="bloque-foto" class="tunel-foto" hidden>
-                <div class="tunel-foto-caja">
-                    <img id="foto" alt="Foto recibida del celular">
-                    <span id="foto-hora" class="tunel-hora"></span>
+            <div class="tunel-tablero">
+                <div class="tunel-lado-qr">
+                    <div class="tunel-qr">
+                        <canvas id="qr" width="320" height="320"></canvas>
+                    </div>
+                    <p class="tunel-codigo">Código <span id="codigo">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span></p>
+                    <p id="qr-url" class="tunel-url"></p>
                 </div>
-                <div class="tunel-foto-lado">
-                    <p id="foto-detalle" class="tunel-detalle"></p>
-                    <div class="tunel-acciones">
-                        <button id="btn-guardar" class="tunel-btn tunel-btn-rojo" type="button">Guardar</button>
-                        <button id="btn-borrar" class="tunel-btn" type="button">Borrar</button>
+
+                <div class="tunel-lado-estado">
+                    <p id="estado" class="tunel-estado">
+                        <span class="tunel-punto"></span><span id="estado-texto">Esperando conexión</span>
+                    </p>
+
+                    <div id="bloque-libre" class="tunel-aviso-caja">
+                        <p>Nadie conectado todavía.</p>
+                        <p class="tunel-nota">Escaneá el código de la izquierda con la cámara del celular.</p>
+                    </div>
+
+                    <div id="bloque-espera" class="tunel-aviso-caja" hidden>
+                        <p>Celular conectado. Esperando la foto…</p>
+                        <p class="tunel-nota">Cuando la tomes, aparece acá mismo.</p>
+                    </div>
+
+                    <div id="bloque-foto" class="tunel-foto" hidden>
+                        <div class="tunel-foto-caja">
+                            <img id="foto" alt="Foto recibida del celular">
+                            <span id="foto-hora" class="tunel-hora"></span>
+                        </div>
+                        <p id="foto-detalle" class="tunel-detalle"></p>
+                        <div class="tunel-acciones">
+                            <button id="btn-guardar" class="tunel-btn tunel-btn-rojo" type="button">Guardar</button>
+                            <button id="btn-borrar" class="tunel-btn" type="button">Borrar</button>
+                        </div>
                     </div>
                 </div>
             </div>

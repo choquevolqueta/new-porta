@@ -25,6 +25,8 @@ var intentosReconexion = 0;
 var urlFoto = null;
 var atFoto = null;
 var temporizadorBorrado = null;
+var emisorConectado = false;
+var textoDeEstado = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -69,10 +71,27 @@ async function crearSesion() {
     return (await respuesta.json()).codigo;
 }
 
+// La PC muestra una sola cosa por vez, siempre al lado del QR: así el
+// procedimiento entero entra en la pantalla y nadie tiene que scrollear.
+// El chip de arriba dice el estado real, no el que estaba antes.
+function pintarEscenario() {
+    const hayFoto = urlFoto !== null;
+    el("bloque-foto").hidden = !hayFoto;
+    el("bloque-espera").hidden = hayFoto || !emisorConectado;
+    el("bloque-libre").hidden = hayFoto || emisorConectado;
+
+    el("estado-texto").textContent = textoDeEstado ?? (
+        hayFoto ? "Foto recibida" : emisorConectado ? "Celular conectado" : "Esperando conexión"
+    );
+    el("estado").classList.toggle("esta-conectado", emisorConectado || hayFoto);
+}
+
+// El texto excepcional ("sin conexión, reintentando") dura hasta el próximo
+// aviso del servidor.
 function pintarEstado(conectado, texto) {
-    el("estado-texto").textContent =
-        texto ?? (conectado ? "Celular conectado, esperando la foto" : "Esperando conexión");
-    el("estado").classList.toggle("esta-conectado", !!conectado);
+    emisorConectado = !!conectado;
+    textoDeEstado = texto ?? null;
+    pintarEscenario();
 }
 
 function conectarComoPc(codigo) {
@@ -156,7 +175,7 @@ function mostrarFoto(mensaje) {
 
     el("foto").src = urlFoto;
     el("foto-hora").textContent = horaDe(atFoto);
-    el("bloque-foto").hidden = false;
+    pintarEscenario();
 
     clearTimeout(temporizadorBorrado);
     temporizadorBorrado = setTimeout(borrarFoto, borradoMs);
@@ -181,7 +200,7 @@ function borrarFoto() {
     }
     atFoto = null;
     el("foto").removeAttribute("src");
-    el("bloque-foto").hidden = true;
+    pintarEscenario();
 }
 
 /* ---------------------------------------------------------- arranque */
