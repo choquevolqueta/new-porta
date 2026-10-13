@@ -5,7 +5,8 @@
 // 8 caracteres dan unos 40 bits: el código es la única credencial de la sesión.
 export const ALFABETO = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const LARGO_CODIGO = 8;
-export const TTL_SESION_MS = 30 * 60 * 1000;
+// Nadie le presta atención a una sesión más de 10 minutos: si nadie la usa, se muere.
+export const TTL_SESION_MS = 10 * 60 * 1000;
 export const MAX_JPEG_BYTES = 600 * 1024;
 
 export function generarCodigo(aleatorio = Math.random, largo = LARGO_CODIGO) {

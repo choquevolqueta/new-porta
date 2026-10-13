@@ -21,7 +21,7 @@ tag = "v1"
 new_sqlite_classes = ["Sesion", "Limite"]
 
 [vars]
-TTL_SESION_MS = "1800000"
+TTL_SESION_MS = "600000"
 
 # El dominio propio del Worker. Con esto, `wrangler deploy` crea el registro DNS
 # y el certificado solo; el apex y el `www` no se tocan (siguen DNS-only).
