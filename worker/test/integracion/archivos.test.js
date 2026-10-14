@@ -231,6 +231,23 @@ test("el reenvío entre pares solo existe en documentos", async () => {
   await cerrar(fotos.pc);
 });
 
+test("el preflight permite los encabezados que usa la subida", async () => {
+  // Los tests de Node no hacen preflight: solo el navegador. Por eso este test
+  // existe — ya nos costó un día con X-Token, y X-Nombre es lo mismo.
+  const r = await fetch(`${API}/subir/ABCDEFGH`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://choquevolqueta.com",
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,x-token,x-nombre",
+    },
+  });
+  assert.equal(r.status, 204);
+  const permitidos = (r.headers.get("access-control-allow-headers") ?? "").toLowerCase();
+  assert.match(permitidos, /x-token/, `el preflight permite: "${permitidos}"`);
+  assert.match(permitidos, /x-nombre/, `el preflight permite: "${permitidos}"`);
+});
+
 test("el respaldo que nadie baja se descarta", async (t) => {
   const salud = await (await fetch(`${API}/health`)).json();
   if (!(salud.ttl_respaldo <= 60000)) {

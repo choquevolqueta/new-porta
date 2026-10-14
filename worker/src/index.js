@@ -20,9 +20,9 @@ function cors(origin) {
   return {
     "Access-Control-Allow-Origin": ORIGENES.includes(origin) ? origin : ORIGENES[0],
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    // X-Token tiene que estar acá: el navegador pregunta antes de mandar un
-    // encabezado propio, y si no está en la lista bloquea la subida entera.
-    "Access-Control-Allow-Headers": "Content-Type, X-Token",
+    // Los encabezados propios tienen que estar acá: el navegador pregunta antes
+    // de mandarlos, y si no están en la lista bloquea el pedido entero.
+    "Access-Control-Allow-Headers": "Content-Type, X-Token, X-Nombre",
     // Para que el celular no pregunte de nuevo antes de cada foto.
     "Access-Control-Max-Age": "600",
     Vary: "Origin",

@@ -428,6 +428,8 @@ function arrancarComoEmisor(codigo) {
 }
 
 function arrancar() {
+    // En modo documentos manda la otra pantalla: esta queda quieta.
+    if (MODO === "documentos") return;
     const codigo = new URLSearchParams(location.search).get("s");
     if (codigo) arrancarComoEmisor(codigo);
     else arrancarComoPc();

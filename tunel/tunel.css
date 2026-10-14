@@ -1,5 +1,5 @@
 /* ================================================================= */
-/* TÚNEL DE FOTOS — solo el módulo.                                  */
+/* TÚNEL — la página del túnel (fotos y documentos)                  */
 /* El resto (fuente, paleta, mayúsculas) viene de ../style.css       */
 /* ================================================================= */
 
@@ -8,7 +8,170 @@
     display: none !important;
 }
 
-/* 1. BARRA PROPIA (no la del portafolio: sus anclas no funcionan acá) */
+/* 1. EL INTERRUPTOR DE MODO, LA LISTA Y LA PANTALLA DEL CLIENTE */
+
+.tunel-modos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 26px;
+}
+
+.tunel-modo {
+    font: inherit;
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 12px 20px;
+    background: transparent;
+    color: #ffffff;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+}
+
+.tunel-modo:hover {
+    border-color: #FF0000;
+    color: #FF0000;
+}
+
+.tunel-modo-activo {
+    background: #FF0000;
+    border-color: #FF0000;
+    color: #ffffff;
+}
+
+.tunel-lista-bloque {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+}
+
+.tunel-vista {
+    border: 2px solid #ffffff;
+    background: #111111;
+    max-width: 420px;
+}
+
+.tunel-vista img,
+.tunel-vista iframe {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 320px;
+    border: 0;
+}
+
+.tunel-vista .tunel-nota {
+    padding: 16px;
+    margin: 0 !important;
+}
+
+.tunel-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 520px;
+}
+
+.tunel-fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+}
+
+.tunel-fila:hover {
+    border-color: #ffffff;
+}
+
+.tunel-fila-elegida {
+    border-color: #FF0000;
+}
+
+.tunel-fila-info {
+    min-width: 0;
+}
+
+.tunel-fila-nombre {
+    margin: 0;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    word-break: break-all;
+}
+
+.tunel-fila-detalle {
+    margin: 6px 0 0;
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+    opacity: 0.7;
+}
+
+.tunel-fila-botones {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.tunel-fila-botones .tunel-btn {
+    padding: 10px 16px;
+    font-size: 0.65rem;
+}
+
+.tunel-elegidos {
+    list-style: none;
+    margin: 0 0 8px;
+    padding: 0;
+    max-width: 420px;
+}
+
+.tunel-elegido {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    word-break: break-all;
+}
+
+.tunel-elegido-tamano {
+    margin-left: auto;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+.tunel-elegido-quitar {
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1;
+    background: transparent;
+    color: #FF0000;
+    border: 0;
+    cursor: pointer;
+    padding: 4px 6px;
+}
+
+@media (max-width: 480px) {
+    .tunel-fila {
+        align-items: flex-start;
+    }
+
+    .tunel-fila-botones {
+        width: 100%;
+    }
+
+    .tunel-fila-botones .tunel-btn {
+        flex: 1 1 auto;
+    }
+}
+
+/* 2. BARRA PROPIA (no la del portafolio: sus anclas no funcionan acá) */
 .tunel-barra {
     display: flex;
     align-items: center;

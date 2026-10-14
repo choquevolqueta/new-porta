@@ -93,9 +93,24 @@ assert.equal(contexto.formatearZoom(1), "1×");
 assert.equal(contexto.formatearZoom(1.5), "1.5×");
 assert.equal(contexto.formatearZoom(2), "2×");
 
+// El tamaño, como se lee en pantalla.
+assert.equal(contexto.formatearBytes(900), "900 B");
+assert.equal(contexto.formatearBytes(2048), "2 KB");
+assert.equal(contexto.formatearBytes(1258291), "1,2 MB");
+
+// El troceado del envío por el canal de datos.
+const trozos = contexto.trocear(40000, 16384);
+assert.equal(trozos.cantidad, 3, "40000 bytes en trozos de 16384 son 3");
+assert.equal(trozos.ultimo, 7232);
+const uno = contexto.trocear(100, 16384);
+assert.equal(uno.cantidad, 1);
+assert.equal(uno.ultimo, 100);
+
 console.log(JSON.stringify({
   conHora: contexto.nombreArchivo(conHora),
   conBasura: contexto.nombreArchivo("basura"),
   horaMostrada: contexto.horaDe(conHora),
   recorte2x: contexto.recorteCentrado(1920, 1080, 2),
+  tamano: contexto.formatearBytes(1258291),
+  trozos: trozos,
 }));

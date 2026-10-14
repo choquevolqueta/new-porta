@@ -17,6 +17,11 @@
     <main class="tunel-main">
         <!-- Rol PC: se anuncia como escucha y muestra el QR -->
         <div id="pantalla-pc" class="tunel-pantalla">
+            <div id="modos" class="tunel-modos">
+                <button id="btn-modo-fotos" class="tunel-modo" type="button">Recibir fotos</button>
+                <button id="btn-modo-documentos" class="tunel-modo" type="button">Recibir documentos</button>
+            </div>
+
             <h1 class="tunel-titulo">Pasa una foto del celular a esta computadora</h1>
 
             <div class="tunel-tablero">
@@ -41,6 +46,22 @@
                     <div id="bloque-espera" class="tunel-aviso-caja" hidden>
                         <p>Celular conectado. Esperando la foto…</p>
                         <p class="tunel-nota">Cuando la tomes, aparece acá mismo.</p>
+                    </div>
+
+                    <!-- Los mismos dos avisos, con el texto de documentos -->
+                    <div id="bloque-libre-docs" class="tunel-aviso-caja" hidden>
+                        <p>Nadie conectado todavía.</p>
+                        <p class="tunel-nota">El cliente escanea el código de la izquierda con su celular.</p>
+                    </div>
+
+                    <div id="bloque-espera-docs" class="tunel-aviso-caja" hidden>
+                        <p>Cliente conectado. Esperando los archivos…</p>
+                        <p class="tunel-nota">Cuando los mande, aparecen en la lista.</p>
+                    </div>
+
+                    <div id="bloque-lista" class="tunel-lista-bloque" hidden>
+                        <div id="vista-item" class="tunel-vista" hidden></div>
+                        <div id="lista-recibidos" class="tunel-lista"></div>
                     </div>
 
                     <div id="bloque-foto" class="tunel-foto" hidden>
@@ -80,6 +101,20 @@
             <button id="btn-disparar" class="tunel-btn tunel-btn-rojo tunel-btn-ancho" type="button" hidden>Tomar la foto</button>
 
             <p id="aviso-celular" class="tunel-aviso"></p>
+        </div>
+
+        <!-- Rol cliente: elige archivos y los manda -->
+        <div id="pantalla-cliente" class="tunel-pantalla" hidden>
+            <h1 class="tunel-titulo">Enviá tus archivos</h1>
+
+            <button id="btn-elegir" class="tunel-btn tunel-btn-rojo tunel-btn-ancho" type="button">Elegir archivos</button>
+            <input id="input-archivos" type="file" multiple accept="application/pdf,.docx,image/jpeg,image/png" hidden>
+
+            <ul id="lista-elegidos" class="tunel-elegidos"></ul>
+
+            <button id="btn-enviar" class="tunel-btn tunel-btn-rojo tunel-btn-ancho" type="button" disabled>Enviar</button>
+
+            <p id="aviso-cliente" class="tunel-aviso"></p>
         </div>
     </main>
 

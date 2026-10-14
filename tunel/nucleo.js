@@ -12,6 +12,10 @@ const ES_LOCAL = location.hostname === "localhost" || location.hostname === "127
 var API_BASE = ES_LOCAL ? "http://127.0.0.1:8787" : "https://tunel.choquevolqueta.com";
 var PAGINA = location.origin + location.pathname;
 
+// El modo lo decide la URL: `?m=documentos` es la pantalla de documentos; sin
+// nada, la de fotos (que es la que ya funcionaba).
+var MODO = new URLSearchParams(location.search).get("m") === "documentos" ? "documentos" : "fotos";
+
 const el = (id) => document.getElementById(id);
 
 /* ---------------------------------------------------------------- QR */
@@ -64,6 +68,22 @@ async function crearSesion(modo) {
     return (await respuesta.json()).codigo;
 }
 
+// El mismo WebSocket para las dos pantallas: quien lo pide decide qué hacer con
+// cada mensaje que llega.
+function abrirSocket(codigo, rol, alMensaje) {
+    const ws = new WebSocket(API_BASE.replace(/^http/, "ws") + "/ws/" + codigo + "?rol=" + rol);
+    ws.onmessage = (evento) => {
+        let mensaje;
+        try {
+            mensaje = JSON.parse(evento.data);
+        } catch {
+            return;
+        }
+        alMensaje(mensaje);
+    };
+    return ws;
+}
+
 /* -------------------------------------------- nombres y descargas */
 
 function fechaDe(valor) {
@@ -87,6 +107,19 @@ function horaDe(at, ahora = new Date()) {
     return dos(fecha.getHours()) + ":" + dos(fecha.getMinutes());
 }
 
+// El tamaño, como se lee en pantalla.
+function formatearBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+    return (n / (1024 * 1024)).toFixed(1).replace(".", ",") + " MB";
+}
+
+// Cuántos pedazos y de qué tamaño: lo usa el envío por el canal de datos.
+function trocear(total, tamano) {
+    const cantidad = Math.max(1, Math.ceil(total / tamano));
+    return { cantidad, ultimo: total - tamano * (cantidad - 1) };
+}
+
 // La descarga, en un solo lugar: la usan la foto y los archivos.
 // El `revoke` va con retraso: si se suelta la URL en el acto, algunos
 // navegadores cortan la descarga que acaba de empezar.
@@ -100,3 +133,38 @@ function guardarBlob(blob, nombre) {
     enlace.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// La pantalla de documentos se baja solo cuando hace falta: en modo fotos no se
+// paga su peso ni su riesgo.
+if (MODO === "documentos") {
+    const script = document.createElement("script");
+    script.src = "documentos.js";
+    document.head.appendChild(script);
+}
+
+/* ------------------------------------------------------- el interruptor */
+
+// Cambiar de modo es empezar de nuevo: sesión nueva y QR nuevo. Se avisa, porque
+// el código que está en pantalla deja de servir.
+function pedirCambioDeModo(modo) {
+    if (modo === MODO) return;
+    const aviso = "Se crea una sesión nueva y el código que está en pantalla deja de servir. ¿Seguimos?";
+    if (!confirm(aviso)) return;
+
+    const url = new URL(location.href);
+    if (modo === "documentos") url.searchParams.set("m", "documentos");
+    else url.searchParams.delete("m");
+    url.searchParams.delete("s");
+    location.href = url.toString();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const aFotos = el("btn-modo-fotos");
+    const aDocs = el("btn-modo-documentos");
+    if (!aFotos || !aDocs) return;
+
+    aFotos.classList.toggle("tunel-modo-activo", MODO === "fotos");
+    aDocs.classList.toggle("tunel-modo-activo", MODO === "documentos");
+    aFotos.addEventListener("click", () => pedirCambioDeModo("fotos"));
+    aDocs.addEventListener("click", () => pedirCambioDeModo("documentos"));
+});
