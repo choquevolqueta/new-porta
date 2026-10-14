@@ -70,10 +70,6 @@ function alMensajeMostrador(mensaje) {
         if (pcMostrador) pcMostrador.addIceCandidate(mensaje.candidato).catch(() => {});
         return;
     }
-    if (mensaje.type === "item-ok") {
-        marcarItem(mensaje.id, "listo");
-        return;
-    }
     if (mensaje.type === "item-error") {
         marcarItem(mensaje.id, "error");
         return;
@@ -89,6 +85,12 @@ function prepararPantallaDocs() {
     el("bloque-foto").hidden = true;
     el("bloque-libre").hidden = true;
     el("bloque-espera").hidden = true;
+
+    // El texto del mostrador no puede hablar de fotos cuando el que está delante
+    // es un cliente.
+    el("titulo-pc").textContent = "Recibí lo que te mande el cliente";
+    document.title = "Túnel · documentos";
+    el("rotulo").textContent = "Túnel · documentos";
 }
 
 async function arrancarMostrador() {
@@ -143,6 +145,12 @@ function conectarMostrador() {
 function agregarItem(mensaje) {
     if (recibidos.has(mensaje.id)) return;
 
+    // Lo que no puede entrar no se muestra como si hubiera entrado.
+    if (recibidos.size >= 20 || mensaje.bytes > MAX_ARCHIVO_BYTES) {
+        avisoMostrador("Se rechazó un archivo fuera de lo permitido.");
+        return;
+    }
+
     const fila = {
         id: mensaje.id,
         nombre: mensaje.nombre,
@@ -152,6 +160,8 @@ function agregarItem(mensaje) {
         url: null,
         estado: "esperando",
         progreso: null,
+        creadoEn: Date.now(),
+        ultimoMovimiento: Date.now(),
         reloj: null,
     };
     fila.reloj = setTimeout(() => borrarItem(mensaje.id), limpiezaMs);
@@ -187,28 +197,75 @@ async function bajarItem(id) {
 function marcarItem(id, estado) {
     const fila = recibidos.get(id);
     if (!fila) return;
+    if (fila.estado === "listo" && estado !== "listo") return;
     fila.estado = estado;
+    if (estado === "error") pedazosPorItem.delete(id);
+    pintarLista();
+    if (seleccionado === id) pintarVista();
+}
 
-    // Si los bytes vinieron por el canal, se arman acá: el aviso de "terminó"
-    // llega después del último pedazo.
-    const pedazos = pedazosPorItem.get(id);
-    if (estado === "listo" && pedazos && pedazos.length && !fila.blob) {
+// El canal avisa "terminé" por adentro del canal: recién ahí los pedazos son
+// todos, y si el total no coincide, la fila no puede decir "recibido".
+function cerrarItemPorCanal(id) {
+    const fila = recibidos.get(id);
+    if (!fila) return;
+    const pedazos = pedazosPorItem.get(id) || [];
+    const total = pedazos.reduce((suma, pedazo) => suma + pedazo.byteLength, 0);
+
+    if (total !== fila.bytes) {
+        pedazosPorItem.delete(id);
+        fila.estado = "error";
+        avisoMostrador("Un archivo llegó incompleto: «" + fila.nombre + "».");
+    } else {
         fila.blob = new Blob(pedazos, { type: fila.tipo });
         fila.url = URL.createObjectURL(fila.blob);
+        fila.estado = "listo";
         pedazosPorItem.delete(id);
     }
-    if (estado === "error") pedazosPorItem.delete(id);
 
     pintarLista();
     if (seleccionado === id) pintarVista();
+
+    // Se le avisa al celular que llegó: así puede cerrar tranquilo en vez de
+    // cortar el último pedazo antes de que salga.
+    try {
+        canalEntrante?.send(JSON.stringify({ recibido: id }));
+    } catch {}
+}
+
+function avisoMostrador(texto) {
+    el("aviso-mostrador").textContent = texto ?? "";
+    clearTimeout(avisoMostrador.reloj);
+    avisoMostrador.reloj = setTimeout(() => {
+        el("aviso-mostrador").textContent = "";
+    }, 6000);
 }
 
 function marcarProgreso(mensaje) {
     const fila = recibidos.get(mensaje.id);
     if (!fila) return;
+    fila.ultimoMovimiento = Date.now();
     fila.progreso = mensaje.total ? Math.round((mensaje.recibidos / mensaje.total) * 100) : null;
     pintarLista();
 }
+
+// Cada tanto se mira si algo quedó parado: un celular que se duerme o pierde
+// señal no avisa, y la fila no puede quedarse en un porcentaje para siempre.
+setInterval(() => {
+    const ahora = Date.now();
+    let cambio = false;
+    for (const fila of recibidos.values()) {
+        if (fila.estado === "listo" || fila.estado === "error") continue;
+        if (ahora - fila.ultimoMovimiento > 20000) {
+            fila.estado = "error";
+            cambio = true;
+        }
+    }
+    if (cambio) {
+        pintarLista();
+        avisoMostrador("Algo se quedó a medias: probá que el cliente lo mande otra vez.");
+    }
+}, 5000);
 
 function borrarItem(id) {
     const fila = recibidos.get(id);
@@ -436,6 +493,11 @@ async function enviarPorP2P(item) {
         canal.binaryType = "arraybuffer";
 
         canal.onopen = async () => {
+            // El reloj de los 5 segundos era "no enganchó": una vez abierto el
+            // canal, ya no tiene por qué cortar nada. Sin esto, cualquier archivo
+            // que tardara más de 5 segundos se abortaba a la mitad y se mandaba
+            // de nuevo por el respaldo.
+            clearTimeout(relojEspera);
             try {
                 const bytes = await item.archivo.arrayBuffer();
                 canal.send(JSON.stringify({ id: item.id }));
@@ -458,7 +520,28 @@ async function enviarPorP2P(item) {
                     }
                 }
 
-                mandarSenal({ type: "item-ok", id: item.id });
+                mandarSenal({ type: "progreso", id: item.id, recibidos: bytes.byteLength, total: bytes.byteLength });
+                // El "terminé" va por el mismo canal que los bytes, y se espera
+                // la confirmación del mostrador antes de cerrar: cerrar apenas
+                // se manda el último pedazo lo deja sin salir del buffer.
+                canal.send(JSON.stringify({ fin: item.id }));
+                await new Promise((resolver) => {
+                    let listo = false;
+                    const terminarEspera = () => {
+                        if (listo) return;
+                        listo = true;
+                        resolver();
+                    };
+                    canal.onmessage = (evento) => {
+                        try {
+                            const dato = JSON.parse(evento.data);
+                            if (dato.recibido === item.id) terminarEspera();
+                        } catch {
+                            // Un mensaje raro no corta la espera.
+                        }
+                    };
+                    setTimeout(terminarEspera, 3000);
+                });
                 try {
                     pc.close();
                 } catch {}
@@ -525,6 +608,10 @@ function prepararCanal(oferta) {
             if (typeof mensaje.data === "string") {
                 try {
                     const dato = JSON.parse(mensaje.data);
+                    if (dato.fin) {
+                        cerrarItemPorCanal(dato.fin);
+                        return;
+                    }
                     if (dato.id) {
                         canalItemId = dato.id;
                         pedazosPorItem.set(dato.id, []);
@@ -549,6 +636,49 @@ function prepararCanal(oferta) {
 
 /* -------------------------------------------------------------- el envío */
 
+// El respaldo, con progreso: un `fetch` no deja ver cuánto falta, así que va
+// por XHR.
+function subirPorRespaldo(item) {
+    return new Promise((resolver) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", API_BASE + "/subir/" + codigoActual);
+        xhr.setRequestHeader("Content-Type", item.tipo);
+        xhr.setRequestHeader("X-Token", tokenDoc);
+        xhr.setRequestHeader("X-Nombre", encodeURIComponent(item.nombre));
+        xhr.setRequestHeader("X-Id", item.id);
+
+        xhr.upload.onprogress = (evento) => {
+            mandarSenal({
+                type: "progreso",
+                id: item.id,
+                recibidos: evento.loaded,
+                total: evento.total || item.bytes,
+            });
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) return resolver({ ok: true });
+            if (xhr.status === 409) {
+                return resolver({
+                    ok: false,
+                    error: "sin-pc",
+                    mensaje: "La computadora se desconectó. Probá de nuevo cuando esté.",
+                });
+            }
+            if (xhr.status === 413) {
+                return resolver({ ok: false, error: "grande", mensaje: "«" + item.nombre + "» pesa más de lo que el túnel acepta." });
+            }
+            if (xhr.status === 415) {
+                return resolver({ ok: false, error: "tipo", mensaje: "«" + item.nombre + "» no es de un tipo que el túnel acepte." });
+            }
+            resolver({ ok: false, error: "otro", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
+        };
+        xhr.onerror = () => resolver({ ok: false, error: "red", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
+
+        xhr.send(item.archivo);
+    });
+}
+
 async function enviarElegidos() {
     const boton = el("btn-enviar");
     boton.disabled = true;
@@ -558,7 +688,11 @@ async function enviarElegidos() {
     let intentados = 0;
 
     for (const item of elegidos) {
-        // Se mira antes de empezar: si no entra, no se manda.
+        // Se mira antes de empezar: lo que no puede entrar no se manda.
+        if (!item.bytes) {
+            avisoCliente("«" + item.nombre + "» está vacío.");
+            continue;
+        }
         if (item.bytes > MAX_ARCHIVO_BYTES) {
             avisoCliente("«" + item.nombre + "» pesa más de lo que el túnel acepta.");
             continue;
@@ -571,7 +705,8 @@ async function enviarElegidos() {
         intentados++;
         avisoCliente("Mandando «" + item.nombre + "»…" + avisoPantalla);
 
-        // Primero el camino directo. Si no engancha, el respaldo.
+        // El id lo pone el celular y viaja en los dos caminos: así un archivo es
+        // una sola fila, vaya por donde vaya.
         item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
         mandarSenal({ type: "item", id: item.id, nombre: item.nombre, tipo: item.tipo, bytes: item.bytes });
 
@@ -581,38 +716,19 @@ async function enviarElegidos() {
         } catch {
             salio = false;
         }
-
         if (salio) {
             enviados++;
             continue;
         }
 
         avisoCliente("Mandando «" + item.nombre + "» por el respaldo…");
-        try {
-            const respuesta = await fetch(API_BASE + "/subir/" + codigoActual, {
-                method: "POST",
-                headers: {
-                    "Content-Type": item.tipo,
-                    "X-Token": tokenDoc,
-                    "X-Nombre": encodeURIComponent(item.nombre),
-                    // El mismo id que se avisó por el WebSocket: así el mostrador
-                    // no termina con dos filas para un solo archivo.
-                    "X-Id": item.id,
-                },
-                body: item.archivo,
-            });
-
-            if (respuesta.ok) {
-                enviados++;
-            } else if (respuesta.status === 413) {
-                avisoCliente("«" + item.nombre + "» pesa más de lo que el túnel acepta.");
-            } else if (respuesta.status === 415) {
-                avisoCliente("«" + item.nombre + "» no es de un tipo que el túnel acepte.");
-            } else {
-                avisoCliente("No se pudo mandar «" + item.nombre + "». Probá otra vez.");
-            }
-        } catch {
-            avisoCliente("No se pudo mandar «" + item.nombre + "». Probá otra vez.");
+        const resultado = await subirPorRespaldo(item);
+        if (resultado.ok) {
+            enviados++;
+        } else {
+            // Si no llegó, la fila del mostrador no puede quedar mintiendo.
+            mandarSenal({ type: "item-error", id: item.id, motivo: resultado.error });
+            avisoCliente(resultado.mensaje);
         }
     }
 
@@ -624,10 +740,11 @@ async function enviarElegidos() {
             " en la computadora."
         );
         elegidos = [];
-        pintarElegidos();
-        return;
+        el("input-archivos").value = "";
     }
-    if (intentados === 0) boton.disabled = false;
+    // Con o sin éxito, el botón vuelve a su estado real: si quedaron archivos,
+    // se pueden reintentar sin recargar la página.
+    pintarElegidos();
 }
 
 function arrancarCliente(codigo) {

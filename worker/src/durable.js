@@ -17,6 +17,11 @@ import {
 } from "./archivo.js";
 import { permitir } from "./limite.js";
 
+// El canal es abierto: aunque el archivo tenga su tope, el objeto no puede
+// quedarse con lo que le manden sin límite.
+const MAX_ITEMS = 20;
+const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+
 const json = (cuerpo, status) =>
   new Response(JSON.stringify(cuerpo), {
     status,
@@ -55,6 +60,7 @@ export class Sesion {
     this.tokenPc = null;
     // Los archivos del respaldo, en memoria: id → { nombre, tipo, bytes, guardadoEn }.
     this.items = new Map();
+    this.bytesGuardados = 0;
     this.ttlRespaldo = Number(env?.TTL_RESPALDO_MS ?? TTL_RESPALDO_MS);
   }
 
@@ -102,7 +108,10 @@ export class Sesion {
     const ahora = Date.now();
 
     for (const [id, item] of this.items) {
-      if (ahora - item.guardadoEn >= this.ttlRespaldo) this.items.delete(id);
+      if (ahora - item.guardadoEn >= this.ttlRespaldo) {
+        this.bytesGuardados -= item.bytes.length;
+        this.items.delete(id);
+      }
     }
 
     if (this.sesion && !estaExpirada(this.sesion, ahora, this.ttl)) {
@@ -122,6 +131,7 @@ export class Sesion {
     this.tokenEmisor = null;
     this.tokenPc = null;
     this.items.clear();
+    this.bytesGuardados = 0;
   }
 
   async crear(request) {
@@ -289,6 +299,15 @@ export class Sesion {
       return json({ error: "sin-token" }, 409);
     }
 
+    // Sin PC no hay a quién entregarlo: guardarlo sería prometer una entrega que
+    // no va a pasar (y que se descarta a los dos minutos sin que nadie se entere).
+    if (!this.pc) return json({ error: "sin-pc" }, 409);
+
+    // El volumen también tiene tope: el canal es abierto y el objeto no puede
+    // quedarse con lo que le manden.
+    if (this.items.size >= MAX_ITEMS) return json({ error: "lleno" }, 413);
+    if (this.bytesGuardados + bytes.length > MAX_TOTAL_BYTES) return json({ error: "lleno" }, 413);
+
     const tipo = request.headers.get("Content-Type") ?? "";
     const puede = puedeRecibirArchivo(this.sesion.modo, tipo, bytes);
     if (!puede.ok) {
@@ -306,14 +325,13 @@ export class Sesion {
 
     const id = request.headers.get("X-Id") || this.generarToken().slice(0, 16);
     this.items.set(id, { nombre, tipo, bytes, guardadoEn: Date.now() });
+    this.bytesGuardados += bytes.length;
 
     tocarSesion(this.sesion, Date.now());
     await this.programarAlarma(Date.now());
 
-    if (this.pc) {
-      this.enviar(this.pc, { type: "item", id, nombre, tipo, bytes: bytes.length });
-      this.enviar(this.pc, { type: "item-listo", id });
-    }
+    this.enviar(this.pc, { type: "item", id, nombre, tipo, bytes: bytes.length });
+    this.enviar(this.pc, { type: "item-listo", id });
 
     return json({ ok: true, id }, 200);
   }
@@ -330,9 +348,9 @@ export class Sesion {
     const item = this.items.get(id);
     if (!item) return json({ error: "sin-item" }, 404);
 
-    // De un solo uso: se entrega y se olvida.
-    this.items.delete(id);
-
+    // El archivo se queda hasta que venza: si la bajada se corta a la mitad, la
+    // PC puede volver a pedirlo. Borrarlo al entregarlo convertía un hipo de red
+    // en un documento perdido.
     return new Response(item.bytes, {
       status: 200,
       headers: { "Content-Type": item.tipo },

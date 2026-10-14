@@ -11,7 +11,7 @@
 <body>
     <header class="tunel-barra">
         <a class="tunel-marca" href="/">Alexander Cortez</a>
-        <span class="tunel-rotulo">Túnel de fotos</span>
+        <span id="rotulo" class="tunel-rotulo">Túnel de fotos</span>
     </header>
 
     <main class="tunel-main">
@@ -22,7 +22,7 @@
                 <button id="btn-modo-documentos" class="tunel-modo" type="button">Recibir documentos</button>
             </div>
 
-            <h1 class="tunel-titulo">Pasa una foto del celular a esta computadora</h1>
+            <h1 id="titulo-pc" class="tunel-titulo">Pasa una foto del celular a esta computadora</h1>
 
             <div class="tunel-tablero">
                 <div class="tunel-lado-qr">
@@ -60,6 +60,7 @@
                     </div>
 
                     <div id="bloque-lista" class="tunel-lista-bloque" hidden>
+                        <p id="aviso-mostrador" class="tunel-aviso"></p>
                         <div id="vista-item" class="tunel-vista" hidden></div>
                         <div id="lista-recibidos" class="tunel-lista"></div>
                     </div>

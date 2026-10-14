@@ -142,7 +142,7 @@ test("el respaldo exige el token del emisor, y avisa a la PC", async () => {
   await cerrar(pc);
 });
 
-test("la PC baja el archivo una sola vez", async () => {
+test("la PC baja el archivo y lo puede volver a pedir", async () => {
   const { codigo, pc, pcToken, tokenEmisor, cel } = await sesionLista();
   await subir(codigo, tokenEmisor, PDF, "reclamo.pdf");
   const item = await proximo(pc);
@@ -153,8 +153,9 @@ test("la PC baja el archivo una sola vez", async () => {
   assert.deepEqual(new Uint8Array(await primera.arrayBuffer()), PDF);
   assert.match(primera.headers.get("content-type") ?? "", /application\/pdf/);
 
+  // Un corte de red no puede perder el documento: se queda hasta que vence.
   const segunda = await bajar(codigo, item.id, pcToken);
-  assert.equal(segunda.status, 404, "el segundo intento ya no lo encuentra");
+  assert.equal(segunda.status, 200, "todavía se puede pedir de nuevo");
 
   await cerrar(cel);
   await cerrar(pc);
@@ -255,6 +256,44 @@ test("el preflight permite los encabezados que usa la subida", async () => {
   assert.match(permitidos, /x-token/, `el preflight permite: "${permitidos}"`);
   assert.match(permitidos, /x-nombre/, `el preflight permite: "${permitidos}"`);
   assert.match(permitidos, /x-id/, `el preflight permite: "${permitidos}"`);
+});
+
+test("el respaldo no acepta nada si no hay PC escuchando", async () => {
+  // Sin PC no hay a quién entregarlo: guardarlo sería prometer una entrega que
+  // se descarta sola dos minutos después, con el cliente creyendo que llegó.
+  const codigo = await nuevaSesion("documentos");
+  const { ws: cel, token } = await abrirEmisor(codigo);
+
+  const r = await subir(codigo, token, PDF);
+  assert.equal(r.status, 409, "sin PC no se guarda nada");
+
+  await cerrar(cel);
+});
+
+test("el respaldo tiene tope de cantidad, no solo de tamaño", async () => {
+  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
+  let ultimo = 0;
+  for (let i = 0; i < 21; i++) {
+    ultimo = (await subir(codigo, tokenEmisor, PDF, "reclamo-" + i + ".pdf")).status;
+  }
+  assert.equal(ultimo, 413, "el archivo 21 ya no entra");
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("el archivo del respaldo sigue disponible para reintentar", async () => {
+  // Se queda hasta que vence: una bajada cortada no puede perder el documento.
+  const { codigo, pc, pcToken, tokenEmisor, cel } = await sesionLista();
+  await subir(codigo, tokenEmisor, PDF);
+  const item = await proximo(pc);
+  await proximo(pc);
+
+  assert.equal((await bajar(codigo, item.id, pcToken)).status, 200);
+  assert.equal((await bajar(codigo, item.id, pcToken)).status, 200, "todavía se puede pedir de nuevo");
+
+  await cerrar(cel);
+  await cerrar(pc);
 });
 
 test("el respaldo que nadie baja se descarta", async (t) => {
