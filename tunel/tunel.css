@@ -229,11 +229,20 @@
     align-items: center;
     gap: 12px;
     margin-top: 18px;
+    max-width: 420px;
+}
+
+.tunel-zoom-barra {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 30px;
+    accent-color: #FF0000;
 }
 
 .tunel-zoom-btn {
     width: 46px;
     height: 46px;
+    flex: 0 0 auto;
     font: inherit;
     font-size: 1.2rem;
     line-height: 1;
@@ -254,10 +263,23 @@
 }
 
 .tunel-zoom-valor {
-    min-width: 62px;
-    text-align: center;
+    flex: 0 0 auto;
+    min-width: 54px;
+    text-align: right;
     font-size: 0.8rem;
     letter-spacing: 2px;
+}
+
+/* La linterna: solo aparece si el teléfono la expone. El `#id` hace falta para
+   ganarle al `background: transparent` de `.tunel-btn`, que viene después. */
+#btn-linterna {
+    margin-top: 12px;
+}
+
+#btn-linterna.tunel-linterna-prendida {
+    background: #FF0000;
+    border-color: #FF0000;
+    color: #ffffff;
 }
 
 .tunel-aviso {

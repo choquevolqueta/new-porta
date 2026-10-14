@@ -235,12 +235,17 @@ var tokenEmisor = null;
 
 // Zoom: se usa el del dispositivo si sabe hacerlo, y si no, se recorta el
 // centro del cuadro (que funciona en cualquier teléfono, perdiendo resolución).
-var NIVELES_ZOOM_DIGITAL = [1, 1.5, 2, 2.5, 3];
+// El control es un slider: con el rango real del teléfono, que llega a 10×, unos
+// pocos pasos fijos saltan de 1× a 3× de un toque.
+var ZOOM_DIGITAL_MIN = 1;
+var ZOOM_DIGITAL_MAX = 3;
 var pistaCamara = null;
-var nivelesZoom = [1];
-var zoomActual = 0;
+var zoomInfo = { min: 1, max: 3, paso: 0.1 };
+var zoomActual = 1;
 var modoZoom = "digital";
 var zoomDigital = 1;
+var linternaPrendida = false;
+var relojZoom = null;
 
 function avisoCelular(texto) {
     el("aviso-celular").textContent = texto ?? "";
@@ -304,7 +309,8 @@ async function activarCamara() {
 
     el("btn-activar-camara").hidden = true;
     el("btn-disparar").hidden = false;
-    prepararZoom();
+    prepararControles();
+    pintarLinterna();
     avisoCelular("Tocá el botón rojo para tomar la foto.");
 }
 
@@ -321,59 +327,93 @@ function formatearZoom(valor) {
     return (Number.isInteger(valor) ? valor : valor.toFixed(1)) + "×";
 }
 
-function prepararZoom() {
+function prepararControles() {
     const pista = streamCamara ? streamCamara.getVideoTracks()[0] : null;
     const capacidades = (pista && pista.getCapabilities && pista.getCapabilities()) || {};
+    const zoom = capacidades.zoom;
+    pistaCamara = pista;
 
-    if (capacidades.zoom && capacidades.zoom.max > capacidades.zoom.min) {
+    if (zoom && zoom.max > zoom.min) {
         // El teléfono sabe hacer zoom: mejor, porque no se pierde nada.
-        pistaCamara = pista;
         modoZoom = "nativo";
-        const desde = capacidades.zoom.min;
-        const hasta = capacidades.zoom.max;
-        nivelesZoom = Array.from({ length: 5 }, (_, i) => desde + ((hasta - desde) * i) / 4);
+        zoomInfo = { min: zoom.min, max: zoom.max, paso: zoom.step || 0.1 };
     } else {
-        pistaCamara = null;
         modoZoom = "digital";
-        nivelesZoom = NIVELES_ZOOM_DIGITAL.slice();
+        zoomInfo = { min: ZOOM_DIGITAL_MIN, max: ZOOM_DIGITAL_MAX, paso: 0.1 };
     }
 
-    zoomActual = 0;
-    aplicarZoom();
+    const barra = el("zoom-barra");
+    barra.min = zoomInfo.min;
+    barra.max = zoomInfo.max;
+    barra.step = zoomInfo.paso;
+    barra.value = zoomInfo.min;
+
+    zoomActual = zoomInfo.min;
+    zoomDigital = 1;
+
     el("zoom-controles").hidden = false;
+    // La linterna es otra capacidad del mismo track: si el teléfono no la
+    // expone, el botón no existe (en iPhone, por ejemplo, no existe).
+    el("btn-linterna").hidden = !(pista && capacidades.torch);
+    aplicarZoom(true);
 }
 
-async function aplicarZoom() {
-    const valor = nivelesZoom[zoomActual];
-
-    if (modoZoom === "nativo") {
-        try {
-            await pistaCamara.applyConstraints({ advanced: [{ zoom: valor }] });
-            el("video").style.transform = "";
-        } catch {
-            // Dijo que sabía y no aceptó: se cae al recorte, que siempre anda.
-            modoZoom = "digital";
-            nivelesZoom = NIVELES_ZOOM_DIGITAL.slice();
-            zoomActual = 0;
-            aplicarZoom();
-            return;
-        }
-    } else {
-        zoomDigital = valor;
-        // La previa se agranda igual que el recorte: lo que ves es lo que sale.
-        el("video").style.transform = valor > 1 ? "scale(" + valor + ")" : "";
-    }
-
-    el("zoom-valor").textContent = formatearZoom(valor);
-    el("btn-zoom-menos").disabled = zoomActual === 0;
-    el("btn-zoom-mas").disabled = zoomActual === nivelesZoom.length - 1;
+function setZoom(valor) {
+    const acotado = Math.min(zoomInfo.max, Math.max(zoomInfo.min, valor));
+    zoomActual = acotado;
+    el("zoom-barra").value = acotado;
+    aplicarZoom();
 }
 
 function moverZoom(paso) {
-    const destino = Math.min(nivelesZoom.length - 1, Math.max(0, zoomActual + paso));
-    if (destino === zoomActual) return;
-    zoomActual = destino;
-    aplicarZoom();
+    const salto = Math.max(zoomInfo.paso, (zoomInfo.max - zoomInfo.min) / 20);
+    setZoom(zoomActual + paso * salto);
+}
+
+function aplicarZoom(primeraVez) {
+    if (modoZoom === "nativo") {
+        // El slider dispara decenas de cambios por segundo: se manda el último.
+        clearTimeout(relojZoom);
+        relojZoom = setTimeout(() => {
+            pistaCamara.applyConstraints({ advanced: [{ zoom: zoomActual }] }).catch(() => {
+                // Dijo que sabía y no aceptó: se cae al recorte, que siempre anda.
+                modoZoom = "digital";
+                zoomInfo = { min: ZOOM_DIGITAL_MIN, max: ZOOM_DIGITAL_MAX, paso: 0.1 };
+                zoomActual = ZOOM_DIGITAL_MIN;
+                const barra = el("zoom-barra");
+                barra.min = zoomInfo.min;
+                barra.max = zoomInfo.max;
+                barra.step = zoomInfo.paso;
+                barra.value = zoomActual;
+                aplicarZoom(true);
+            });
+        }, primeraVez ? 0 : 60);
+    } else {
+        zoomDigital = zoomActual;
+        // La previa se agranda igual que el recorte: lo que ves es lo que sale.
+        el("video").style.transform = zoomDigital > 1 ? "scale(" + zoomDigital + ")" : "";
+    }
+
+    el("zoom-valor").textContent = formatearZoom(zoomActual);
+    el("btn-zoom-menos").disabled = zoomActual <= zoomInfo.min + zoomInfo.paso / 2;
+    el("btn-zoom-mas").disabled = zoomActual >= zoomInfo.max - zoomInfo.paso / 2;
+}
+
+async function alternarLinterna() {
+    if (!pistaCamara) return;
+    linternaPrendida = !linternaPrendida;
+    try {
+        await pistaCamara.applyConstraints({ advanced: [{ torch: linternaPrendida }] });
+    } catch {
+        linternaPrendida = false;
+        avisoCelular("Este teléfono no deja encender la linterna desde la página.");
+    }
+    pintarLinterna();
+}
+
+function pintarLinterna() {
+    el("btn-linterna").textContent = linternaPrendida ? "Linterna encendida" : "Linterna";
+    el("btn-linterna").classList.toggle("tunel-linterna-prendida", linternaPrendida);
 }
 
 // El cuadro se copia con el lado mayor en 1600 px, que para una foto de trabajo
@@ -470,6 +510,8 @@ document.addEventListener("DOMContentLoaded", () => {
     el("btn-disparar").addEventListener("click", disparar);
     el("btn-zoom-menos").addEventListener("click", () => moverZoom(-1));
     el("btn-zoom-mas").addEventListener("click", () => moverZoom(1));
+    el("zoom-barra").addEventListener("input", () => setZoom(Number(el("zoom-barra").value)));
+    el("btn-linterna").addEventListener("click", alternarLinterna);
 
     // Última red: si lo que llegó no se puede mostrar, no se deja un cuadro
     // roto con botón de guardar. (El Worker ya filtra por los dos primeros
