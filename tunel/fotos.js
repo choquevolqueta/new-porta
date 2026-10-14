@@ -1,16 +1,10 @@
 /* =====================================================================
-   Túnel de fotos — el cliente.
+   Túnel de fotos — la pantalla.
    Una sola página con dos roles, decididos por la URL y no por el
    user-agent: sin `?s=` es la PC que escucha, con `?s=` es el celular
    que saca la foto y la manda.
+   El motor (sesión, QR, nombres, descarga) vive en `nucleo.js`.
    ===================================================================== */
-
-const ES_LOCAL = location.hostname === "localhost" || location.hostname === "127.0.0.1";
-
-// Todo lo de abajo es `var` a propósito: queda a la vista desde la consola,
-// que es como se prueba el módulo a mano.
-var API_BASE = ES_LOCAL ? "http://127.0.0.1:8787" : "https://tunel.choquevolqueta.com";
-var PAGINA = location.origin + location.pathname;
 
 // Se puede bajar desde la consola para no esperar 10 minutos en una prueba.
 var borradoMs = 10 * 60 * 1000;
@@ -23,53 +17,13 @@ var codigoActual = null;
 var socketPc = null;
 var intentosReconexion = 0;
 var urlFoto = null;
+var blobFoto = null;
 var atFoto = null;
 var temporizadorBorrado = null;
 var emisorConectado = false;
 var textoDeEstado = null;
 
-const el = (id) => document.getElementById(id);
-
-/* ---------------------------------------------------------------- QR */
-
-function dibujarQr(texto) {
-    const qr = qrcode(0, "M");
-    qr.addData(texto);
-    qr.make();
-
-    const n = qr.getModuleCount();
-    const margen = 4; // el margen que pide el estándar
-    const lona = el("qr");
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
-
-    // Se redondea para arriba: mejor un canvas un poco más grande que uno
-    // estirado y borroso. El tamaño visible lo pone el CSS.
-    const escala = Math.max(2, Math.ceil((320 * dpr) / (n + margen * 2)));
-    const lado = (n + margen * 2) * escala;
-
-    lona.width = lado;
-    lona.height = lado;
-
-    const ctx = lona.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, lado, lado);
-    ctx.fillStyle = "#000000";
-    for (let fila = 0; fila < n; fila++) {
-        for (let col = 0; col < n; col++) {
-            if (qr.isDark(fila, col)) {
-                ctx.fillRect((col + margen) * escala, (fila + margen) * escala, escala, escala);
-            }
-        }
-    }
-}
-
-/* ------------------------------------------------------------ sesión */
-
-async function crearSesion() {
-    const respuesta = await fetch(API_BASE + "/session", { method: "POST" });
-    if (!respuesta.ok) throw new Error("sin-sesion");
-    return (await respuesta.json()).codigo;
-}
+/* ---------------------------------------------------- la pantalla de la PC */
 
 // La PC muestra una sola cosa por vez, siempre al lado del QR: así el
 // procedimiento entero entra en la pantalla y nadie tiene que scrollear.
@@ -137,27 +91,6 @@ function reconectar(codigo) {
 
 /* -------------------------------------------------- la foto recibida */
 
-function fechaDe(valor) {
-    if (typeof valor !== "string" || valor === "") return null;
-    const fecha = new Date(valor);
-    return Number.isNaN(fecha.getTime()) ? null : fecha;
-}
-
-function nombreArchivo(at, ahora = new Date()) {
-    const fecha = fechaDe(at) ?? ahora;
-    const dos = (n) => String(n).padStart(2, "0");
-    return (
-        "foto-" + fecha.getFullYear() + "-" + dos(fecha.getMonth() + 1) + "-" + dos(fecha.getDate()) +
-        "-" + dos(fecha.getHours()) + dos(fecha.getMinutes()) + ".jpg"
-    );
-}
-
-function horaDe(at, ahora = new Date()) {
-    const fecha = fechaDe(at) ?? ahora;
-    const dos = (n) => String(n).padStart(2, "0");
-    return dos(fecha.getHours()) + ":" + dos(fecha.getMinutes());
-}
-
 // El base64 se pasa a bytes por su cuenta: un spread de 600 KB revienta.
 function base64ABytes(base64) {
     const binario = atob(base64);
@@ -170,6 +103,7 @@ function mostrarFoto(mensaje) {
     borrarFoto(); // la nueva reemplaza a la vieja
 
     const blob = new Blob([base64ABytes(mensaje.jpeg)], { type: "image/jpeg" });
+    blobFoto = blob;
     urlFoto = URL.createObjectURL(blob);
     atFoto = mensaje.at ?? null;
 
@@ -184,13 +118,8 @@ function mostrarFoto(mensaje) {
 }
 
 function guardarFoto() {
-    if (!urlFoto) return;
-    const enlace = document.createElement("a");
-    enlace.href = urlFoto;
-    enlace.download = nombreArchivo(atFoto);
-    document.body.appendChild(enlace);
-    enlace.click();
-    enlace.remove();
+    if (!blobFoto) return;
+    guardarBlob(blobFoto, nombreArchivo(atFoto));
 }
 
 function borrarFoto() {
@@ -201,6 +130,7 @@ function borrarFoto() {
         urlFoto = null;
     }
     atFoto = null;
+    blobFoto = null;
     el("foto").removeAttribute("src");
     el("foto-detalle").textContent = "";
     pintarEscenario();

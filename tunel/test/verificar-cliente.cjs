@@ -4,15 +4,17 @@
 //
 //   node tunel/test/verificar-cliente.cjs
 //
-// El cliente es un script de navegador, así que se lo ejecuta en un contexto
-// con un DOM mínimo que no hace nada. El resto de `tunel.js` (WebSocket, la
-// foto, la cámara) se verifica a mano en el navegador.
+// El cliente son dos scripts de navegador (`nucleo.js` y `fotos.js`), así que se
+// los ejecuta en el mismo contexto con un DOM mínimo que no hace nada. El resto
+// del cliente (WebSocket, la foto, la cámara) se verifica a mano en el navegador.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const fuente = fs.readFileSync(path.join(__dirname, "..", "tunel.js"), "utf8");
+const fuentes = ["nucleo.js", "fotos.js"].map((nombre) =>
+  fs.readFileSync(path.join(__dirname, "..", nombre), "utf8")
+);
 
 const falso = () => ({
   addEventListener() {},
@@ -37,7 +39,7 @@ const contexto = {
 };
 
 vm.createContext(contexto);
-vm.runInContext(fuente, contexto);
+for (const fuente of fuentes) vm.runInContext(fuente, contexto);
 
 const dos = (n) => String(n).padStart(2, "0");
 const nombreEsperado = (fecha) =>
