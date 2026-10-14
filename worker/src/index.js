@@ -4,6 +4,7 @@
 //   POST /upload/:codigo?at=<ISO>           → { ok: true }
 //   GET  /health                            → { ok: true }
 
+import { MAX_ARCHIVO_BYTES, TTL_RESPALDO_MS } from "./archivo.js";
 import { generarCodigo, normalizarCodigo, MAX_JPEG_BYTES, TTL_SESION_MS } from "./sesion.js";
 
 export { Sesion, Limite } from "./durable.js";
@@ -35,6 +36,7 @@ const json = (cuerpo, status, origin) =>
   });
 
 const ttlDe = (env) => Number(env?.TTL_SESION_MS ?? TTL_SESION_MS);
+const respaldoDe = (env) => Number(env?.TTL_RESPALDO_MS ?? TTL_RESPALDO_MS);
 
 export default {
   async fetch(request, env) {
@@ -46,9 +48,9 @@ export default {
     }
 
     if (url.pathname === "/health") {
-      // El TTL activo se publica para que el test de vencimiento sepa si el
-      // server está configurado con uno corto, en lugar de fallar sin explicar.
-      return json({ ok: true, ttl: ttlDe(env) }, 200, origin);
+      // El TTL activo se publica para que los tests sepan si el server está
+      // configurado con uno corto, en lugar de fallar sin explicar.
+      return json({ ok: true, ttl: ttlDe(env), ttl_respaldo: respaldoDe(env) }, 200, origin);
     }
 
     if (url.pathname === "/session" && request.method === "POST") {
@@ -59,6 +61,9 @@ export default {
       );
       if (limite.status === 429) return json({ error: "limite" }, 429, origin);
 
+      // El modo es opcional: el 1.0 no lo manda y su pedido no lleva cuerpo.
+      const pedido = await request.json().catch(() => ({}));
+
       // El código lo genera acá: el Durable Object no existe hasta que hay un
       // código que lo nombre.
       const codigo = generarCodigo();
@@ -67,14 +72,14 @@ export default {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ codigo, ttl: ttlDe(env) }),
+          body: JSON.stringify({ codigo, ttl: ttlDe(env), modo: pedido.modo, respaldo: respaldoDe(env) }),
         },
       );
       const datos = await creada.json();
       return json({ codigo: datos.codigo }, 200, origin);
     }
 
-    const ruta = url.pathname.match(/^\/(ws|upload)\/([^/]+)$/);
+    const ruta = url.pathname.match(/^\/(ws|upload|subir)\/([^/]+)$/);
     if (ruta) {
       const codigo = normalizarCodigo(decodeURIComponent(ruta[2]));
       const stub = env.SESIONES.get(env.SESIONES.idFromName(codigo));
@@ -86,13 +91,11 @@ export default {
       }
 
       // El tamaño se mira antes de leer nada: si el cuerpo se bufferiza entero
-      // primero, el tope acota el resultado pero no el costo (20 MB entran
-      // igual). No se cancela el stream a mano: en esta versión de wrangler eso
-      // termina en "Network connection lost" y un 500.
+      // primero, el tope acota el resultado pero no el costo. Cada ruta tiene su
+      // tope: la foto viaja por un mensaje de WebSocket, el archivo no.
+      const tope = ruta[1] === "upload" ? MAX_JPEG_BYTES : MAX_ARCHIVO_BYTES;
       const declarado = Number(request.headers.get("Content-Length") ?? 0);
-      if (declarado > MAX_JPEG_BYTES) {
-        return json({ error: "grande" }, 413, origin);
-      }
+      if (declarado > tope) return json({ error: "grande" }, 413, origin);
 
       // El cuerpo se drena siempre, incluso cuando se rechaza: un pedido con el
       // stream sin consumir hace que el runtime avise "Can't read from request
@@ -100,8 +103,8 @@ export default {
       const cuerpo = await request.arrayBuffer();
       if (codigo.length !== 8) return json({ error: "sin-sesion" }, 404, origin);
 
-      // Se reenvía con todas las cabeceras (el token del emisor viaja en una),
-      // menos las que dependen del cuerpo original.
+      // Se reenvía con todas las cabeceras (el token y el nombre del archivo
+      // viajan en ellas), menos las que dependen del cuerpo original.
       const cabeceras = new Headers(request.headers);
       cabeceras.delete("content-length");
       cabeceras.delete("host");
@@ -112,6 +115,18 @@ export default {
         body: cuerpo,
       }));
 
+      return new Response(respuesta.body, {
+        status: respuesta.status,
+        headers: { ...Object.fromEntries(respuesta.headers), ...cors(origin) },
+      });
+    }
+
+    const descarga = url.pathname.match(/^\/bajar\/([^/]+)\/([^/]+)$/);
+    if (descarga) {
+      const codigo = normalizarCodigo(decodeURIComponent(descarga[1]));
+      if (codigo.length !== 8) return json({ error: "sin-sesion" }, 404, origin);
+
+      const respuesta = await env.SESIONES.get(env.SESIONES.idFromName(codigo)).fetch(request);
       return new Response(respuesta.body, {
         status: respuesta.status,
         headers: { ...Object.fromEntries(respuesta.headers), ...cors(origin) },
