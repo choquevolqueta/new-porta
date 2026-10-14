@@ -120,6 +120,44 @@ function trocear(total, tamano) {
     return { cantidad, ultimo: total - tamano * (cantidad - 1) };
 }
 
+/* ------------------------------------------------------ la lista elegida */
+
+// Dos archivos son el mismo si coinciden nombre, tamaño y fecha: es lo que los
+// distingue sin tener que leerlos enteros.
+function claveDeElegido(item) {
+    return item.nombre + "\u0000" + item.bytes + "\u0000" + (item.ultimo || 0);
+}
+
+// Suma lo que se acaba de elegir a lo que ya estaba elegido. En el celular se
+// elige de a tandas —una foto desde la cámara, un PDF desde descargas—, así que
+// la segunda vuelta tiene que conservar la primera. El mismo archivo elegido dos
+// veces no se duplica, y lo que no entra por el tope se informa en vez de
+// desaparecer en silencio.
+function sumarElegidos(previos, nuevos, tope) {
+    const lista = [...previos];
+    const vistos = new Set(lista.map(claveDeElegido));
+    let agregados = 0;
+    let repetidos = 0;
+    let sobrantes = 0;
+
+    for (const item of nuevos) {
+        const clave = claveDeElegido(item);
+        if (vistos.has(clave)) {
+            repetidos++;
+            continue;
+        }
+        if (lista.length >= tope) {
+            sobrantes++;
+            continue;
+        }
+        lista.push(item);
+        vistos.add(clave);
+        agregados++;
+    }
+
+    return { lista, agregados, repetidos, sobrantes };
+}
+
 // El trozo del canal de datos es del cliente: el Worker no lo usa (no ve los
 // bytes cuando el envío va directo).
 var TAMANO_TROZO = 16384;

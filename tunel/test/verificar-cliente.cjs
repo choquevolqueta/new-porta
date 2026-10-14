@@ -106,7 +106,47 @@ const uno = contexto.trocear(100, 16384);
 assert.equal(uno.cantidad, 1);
 assert.equal(uno.ultimo, 100);
 
+// Sumar lo que se acaba de elegir a lo que ya estaba elegido. En el celular se
+// elige de a tandas —una foto desde la cámara, un PDF desde descargas—, así que
+// la segunda vuelta no puede borrar la primera.
+const fichas = (nombres) => nombres.map((nombre, i) => ({ nombre, bytes: (i + 1) * 100, ultimo: 1000 + i }));
+
+const suma = contexto.sumarElegidos(fichas(["foto.jpg"]), fichas(["reclamo.pdf"]), 20);
+assert.deepEqual(
+  [...suma.lista].map((f) => f.nombre),
+  ["foto.jpg", "reclamo.pdf"],
+  "la segunda elección se suma, no reemplaza"
+);
+assert.equal(suma.agregados, 1);
+assert.equal(suma.repetidos, 0);
+assert.equal(suma.sobrantes, 0);
+
+// Lo que ya estaba no se toca: la función devuelve una lista nueva.
+const previos = fichas(["a.pdf"]);
+contexto.sumarElegidos(previos, fichas(["b.pdf"]), 20);
+assert.equal(previos.length, 1, "la lista original no se modifica");
+
+// Elegir otra vez el mismo archivo no lo duplica.
+const repetida = contexto.sumarElegidos(fichas(["a.pdf"]), fichas(["a.pdf"]), 20);
+assert.equal(repetida.lista.length, 1, "el mismo archivo no se cuenta dos veces");
+assert.equal(repetida.repetidos, 1, "y se avisa que ya estaba");
+
+// Dos archivos distintos con el mismo nombre entran los dos: son dos documentos
+// diferentes que casualmente se llaman igual.
+const homonimos = contexto.sumarElegidos(
+  [{ nombre: "reclamo.pdf", bytes: 1000, ultimo: 111 }],
+  [{ nombre: "reclamo.pdf", bytes: 2000, ultimo: 222 }],
+  20
+);
+assert.equal(homonimos.lista.length, 2, "mismo nombre y otro contenido son dos archivos");
+
+// El tope: lo que no entra se avisa, no se pierde en silencio.
+const llena = contexto.sumarElegidos(fichas(["a.pdf", "b.pdf"]), fichas(["c.pdf", "d.pdf"]), 3);
+assert.deepEqual([...llena.lista].map((f) => f.nombre), ["a.pdf", "b.pdf", "c.pdf"]);
+assert.equal(llena.sobrantes, 1, "el que no entró por el tope se informa");
+
 console.log(JSON.stringify({
+  elegidos: suma.lista.map((f) => f.nombre),
   conHora: contexto.nombreArchivo(conHora),
   conBasura: contexto.nombreArchivo("basura"),
   horaMostrada: contexto.horaDe(conHora),

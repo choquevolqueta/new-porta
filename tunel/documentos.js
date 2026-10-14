@@ -9,6 +9,10 @@
 // distintos y no hay build que comparta el número.
 var MAX_ARCHIVO_BYTES = 6 * 1024 * 1024;
 
+// Cuántos archivos por sesión. El Worker corta en 20 y el mostrador también: si
+// acá se dejaran elegir 30, la mitad se caería sola y sin explicación.
+var MAX_ELEGIDOS = 20;
+
 var codigoActual = null;
 var socketDoc = null;
 var tokenDoc = null;
@@ -396,13 +400,36 @@ function tipoDeArchivo(archivo) {
     return "";
 }
 
+// Cada vuelta del selector suma a lo que ya había: en el celular las cosas están
+// repartidas —una foto en la cámara, un PDF en descargas— y elegir de nuevo no
+// puede borrar la elección anterior.
 function elegirArchivos(lista) {
-    elegidos = [...lista].map((archivo) => ({
+    const nuevos = [...lista].map((archivo) => ({
         archivo,
         nombre: archivo.name,
+        ultimo: archivo.lastModified,
         tipo: tipoDeArchivo(archivo),
         bytes: archivo.size,
     }));
+
+    const suma = sumarElegidos(elegidos, nuevos, MAX_ELEGIDOS);
+    elegidos = suma.lista;
+
+    if (suma.sobrantes) {
+        avisoCliente(
+            "El túnel acepta hasta " + MAX_ELEGIDOS + " archivos por vez: " +
+            suma.sobrantes + (suma.sobrantes === 1 ? " quedó afuera." : " quedaron afuera.")
+        );
+    } else if (suma.repetidos && !suma.agregados) {
+        avisoCliente("Ese archivo ya estaba en la lista.");
+    } else {
+        avisoCliente(
+            "En la lista hay " + elegidos.length +
+            (elegidos.length === 1 ? " archivo" : " archivos") +
+            ". Tocá Enviar cuando estén todos."
+        );
+    }
+
     pintarElegidos();
 }
 
@@ -438,6 +465,8 @@ function pintarElegidos() {
     });
 
     el("btn-enviar").disabled = elegidos.length === 0 || !tokenDoc;
+    // El botón dice lo que hace: mientras haya algo en la lista, suma.
+    el("btn-elegir").textContent = elegidos.length ? "Agregar más archivos" : "Elegir archivos";
 }
 
 /* ------------------------------------------------------------------- P2P */
@@ -750,8 +779,7 @@ async function enviarElegidos() {
 function arrancarCliente(codigo) {
     el("pantalla-pc").hidden = true;
     el("pantalla-cliente").hidden = false;
-    codigoActual = codigo;
-    avisoCliente("Elegí los archivos y tocá Enviar.");
+    avisoCliente("Elegí los archivos y tocá Enviar. Podés elegir de nuevo para sumar más.");
 
     socketDoc = abrirSocket(codigo, "emisor", (mensaje) => {
         if (mensaje.type === "bienvenida") {
@@ -777,7 +805,12 @@ function arrancarCliente(codigo) {
 
 function arrancarDocumentos() {
     el("btn-elegir").addEventListener("click", () => el("input-archivos").click());
-    el("input-archivos").addEventListener("change", (evento) => elegirArchivos(evento.target.files));
+    el("input-archivos").addEventListener("change", (evento) => {
+        elegirArchivos(evento.target.files);
+        // Se limpia para poder volver a elegir el mismo archivo —o el mismo lote—
+        // sin que el navegador crea que no cambió nada y no dispare el evento.
+        evento.target.value = "";
+    });
     el("btn-enviar").addEventListener("click", enviarElegidos);
 
     const codigo = new URLSearchParams(location.search).get("s");
