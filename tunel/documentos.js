@@ -19,6 +19,12 @@ var seleccionado = null;
 var intentosDoc = 0;
 var limpiezaMs = 10 * 60 * 1000;
 
+// Si el teléfono no puede mantener la pantalla despierta, se avisa: con la
+// pantalla bloqueada, una transferencia directa se corta a la mitad.
+var avisoPantalla = typeof navigator !== "undefined" && navigator.wakeLock
+    ? ""
+    : " (no bloquees la pantalla hasta que termine)";
+
 /* ------------------------------------------------------------ el mostrador */
 
 function pintarEscenarioDocs() {
@@ -37,6 +43,14 @@ function alMensajeMostrador(mensaje) {
     }
     if (mensaje.type === "estado") {
         clienteConectado = !!mensaje.emisor;
+        // Si el que mandaba se fue, lo que estaba en la cola no va a llegar
+        // nunca: se marca en vez de dejarlo como fantasma.
+        if (!clienteConectado) {
+            for (const fila of recibidos.values()) {
+                if (fila.estado === "esperando") fila.estado = "error";
+            }
+            pintarLista();
+        }
         pintarEscenarioDocs();
         return;
     }
@@ -46,6 +60,14 @@ function alMensajeMostrador(mensaje) {
     }
     if (mensaje.type === "item-listo") {
         bajarItem(mensaje.id);
+        return;
+    }
+    if (mensaje.type === "oferta") {
+        prepararCanal(mensaje.sdp);
+        return;
+    }
+    if (mensaje.type === "candidato") {
+        if (pcMostrador) pcMostrador.addIceCandidate(mensaje.candidato).catch(() => {});
         return;
     }
     if (mensaje.type === "item-ok") {
@@ -99,6 +121,13 @@ function conectarMostrador() {
 
     socketDoc = abrirSocket(codigoActual, "pc", alMensajeMostrador);
     socketDoc.onclose = () => {
+        // Lo que quedó a medias no se deja como fantasma: si el que mandaba se
+        // fue, esas filas no van a terminar nunca.
+        for (const fila of recibidos.values()) {
+            if (fila.estado !== "listo") fila.estado = "error";
+        }
+        pintarLista();
+
         el("estado").classList.remove("esta-conectado");
         el("estado-texto").textContent = "Sin conexión, reintentando";
         if (intentosDoc === 0) {
@@ -159,7 +188,19 @@ function marcarItem(id, estado) {
     const fila = recibidos.get(id);
     if (!fila) return;
     fila.estado = estado;
+
+    // Si los bytes vinieron por el canal, se arman acá: el aviso de "terminó"
+    // llega después del último pedazo.
+    const pedazos = pedazosPorItem.get(id);
+    if (estado === "listo" && pedazos && pedazos.length && !fila.blob) {
+        fila.blob = new Blob(pedazos, { type: fila.tipo });
+        fila.url = URL.createObjectURL(fila.blob);
+        pedazosPorItem.delete(id);
+    }
+    if (estado === "error") pedazosPorItem.delete(id);
+
     pintarLista();
+    if (seleccionado === id) pintarVista();
 }
 
 function marcarProgreso(mensaje) {
@@ -342,9 +383,177 @@ function pintarElegidos() {
     el("btn-enviar").disabled = elegidos.length === 0 || !tokenDoc;
 }
 
+/* ------------------------------------------------------------------- P2P */
+
+// El apretón de manos viaja por el WebSocket que ya existe, y los bytes van
+// directo entre los dos navegadores. Si en cinco segundos no engancha, el
+// archivo se manda por el respaldo del Worker: el usuario no hace nada distinto.
+
+var pcCliente = null;
+var pcMostrador = null;
+var canalEntrante = null;
+var canalItemId = null;
+var pedazosPorItem = new Map();
+var relojVigilia = null;
+
+const STUN = { urls: "stun:stun.cloudflare.com:3478" };
+const TECHO_BUFFER = 512 * 1024;
+
+function mandarSenal(mensaje) {
+    if (socketDoc && socketDoc.readyState === 1) socketDoc.send(JSON.stringify(mensaje));
+}
+
+async function mantenerDespierta() {
+    try {
+        if (navigator.wakeLock) relojVigilia = await navigator.wakeLock.request("screen");
+    } catch {
+        // En iPhone no existe: se avisa abajo.
+    }
+}
+
+function soltarVigilia() {
+    try {
+        relojVigilia?.release();
+    } catch {}
+    relojVigilia = null;
+}
+
+// Devuelve true si el archivo salió entero por el canal.
+async function enviarPorP2P(item) {
+    return new Promise((resolver) => {
+        let cerrado = false;
+        const terminar = (ok) => {
+            if (cerrado) return;
+            cerrado = true;
+            clearTimeout(relojEspera);
+            resolver(ok);
+        };
+
+        const pc = new RTCPeerConnection({ iceServers: [STUN] });
+        pcCliente = pc;
+
+        const canal = pc.createDataChannel("archivo", { ordered: true });
+        canal.binaryType = "arraybuffer";
+
+        canal.onopen = async () => {
+            try {
+                const bytes = await item.archivo.arrayBuffer();
+                canal.send(JSON.stringify({ id: item.id }));
+
+                let enviados = 0;
+                let avisado = 0;
+                for (let i = 0; i < bytes.byteLength; i += TAMANO_TROZO) {
+                    while (canal.bufferedAmount > TECHO_BUFFER) {
+                        await new Promise((r) => setTimeout(r, 20));
+                        if (canal.readyState !== "open") throw new Error("cortado");
+                    }
+                    const trozo = bytes.slice(i, Math.min(i + TAMANO_TROZO, bytes.byteLength));
+                    canal.send(trozo);
+                    enviados += trozo.byteLength;
+
+                    const porcentaje = Math.floor((enviados / bytes.byteLength) * 100);
+                    if (porcentaje >= avisado + 5) {
+                        avisado = porcentaje;
+                        mandarSenal({ type: "progreso", id: item.id, recibidos: enviados, total: bytes.byteLength });
+                    }
+                }
+
+                mandarSenal({ type: "item-ok", id: item.id });
+                try {
+                    pc.close();
+                } catch {}
+                terminar(true);
+            } catch {
+                mandarSenal({ type: "item-error", id: item.id, motivo: "cortado" });
+                try {
+                    pc.close();
+                } catch {}
+                terminar(false);
+            }
+        };
+
+        canal.onclose = () => {
+            if (!cerrado) {
+                mandarSenal({ type: "item-error", id: item.id, motivo: "cortado" });
+                terminar(false);
+            }
+        };
+
+        pc.onicecandidate = (evento) => {
+            if (evento.candidate) mandarSenal({ type: "candidato", candidato: evento.candidate });
+        };
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "failed" || pc.connectionState === "closed") terminar(false);
+        };
+
+        const relojEspera = setTimeout(() => {
+            // No enganchó: se cae al respaldo sin molestar a nadie.
+            try {
+                pc.close();
+            } catch {}
+            terminar(false);
+        }, 5000);
+
+        pc.createOffer()
+            .then((oferta) => pc.setLocalDescription(oferta))
+            .then(() => mandarSenal({ type: "oferta", sdp: pc.localDescription }))
+            .catch(() => terminar(false));
+    });
+}
+
+function alSenalCliente(mensaje) {
+    if (mensaje.type === "respuesta" && pcCliente) {
+        pcCliente.setRemoteDescription(mensaje.sdp).catch(() => {});
+    } else if (mensaje.type === "candidato" && pcCliente) {
+        pcCliente.addIceCandidate(mensaje.candidato).catch(() => {});
+    }
+}
+
+// Del lado del mostrador: llega la oferta, se arma el canal y los pedazos se
+// guardan hasta que el emisor avise que terminó.
+function prepararCanal(oferta) {
+    pcMostrador = new RTCPeerConnection({ iceServers: [STUN] });
+
+    pcMostrador.onicecandidate = (evento) => {
+        if (evento.candidate) mandarSenal({ type: "candidato", candidato: evento.candidate });
+    };
+
+    pcMostrador.ondatachannel = (evento) => {
+        canalEntrante = evento.channel;
+        canalEntrante.binaryType = "arraybuffer";
+        canalEntrante.onmessage = (mensaje) => {
+            if (typeof mensaje.data === "string") {
+                try {
+                    const dato = JSON.parse(mensaje.data);
+                    if (dato.id) {
+                        canalItemId = dato.id;
+                        pedazosPorItem.set(dato.id, []);
+                    }
+                } catch {
+                    // Un mensaje raro no puede tirar abajo la recepción.
+                }
+                return;
+            }
+            const pedazos = pedazosPorItem.get(canalItemId);
+            if (pedazos) pedazos.push(mensaje.data);
+        };
+    };
+
+    pcMostrador
+        .setRemoteDescription(oferta)
+        .then(() => pcMostrador.createAnswer())
+        .then((respuesta) => pcMostrador.setLocalDescription(respuesta))
+        .then(() => mandarSenal({ type: "respuesta", sdp: pcMostrador.localDescription }))
+        .catch(() => {});
+}
+
+/* -------------------------------------------------------------- el envío */
+
 async function enviarElegidos() {
     const boton = el("btn-enviar");
     boton.disabled = true;
+    await mantenerDespierta();
+
     let enviados = 0;
     let intentados = 0;
 
@@ -360,8 +569,25 @@ async function enviarElegidos() {
         }
 
         intentados++;
-        avisoCliente("Mandando «" + item.nombre + "»…");
+        avisoCliente("Mandando «" + item.nombre + "»…" + avisoPantalla);
 
+        // Primero el camino directo. Si no engancha, el respaldo.
+        item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
+        mandarSenal({ type: "item", id: item.id, nombre: item.nombre, tipo: item.tipo, bytes: item.bytes });
+
+        let salio = false;
+        try {
+            salio = await enviarPorP2P(item);
+        } catch {
+            salio = false;
+        }
+
+        if (salio) {
+            enviados++;
+            continue;
+        }
+
+        avisoCliente("Mandando «" + item.nombre + "» por el respaldo…");
         try {
             const respuesta = await fetch(API_BASE + "/subir/" + codigoActual, {
                 method: "POST",
@@ -369,6 +595,9 @@ async function enviarElegidos() {
                     "Content-Type": item.tipo,
                     "X-Token": tokenDoc,
                     "X-Nombre": encodeURIComponent(item.nombre),
+                    // El mismo id que se avisó por el WebSocket: así el mostrador
+                    // no termina con dos filas para un solo archivo.
+                    "X-Id": item.id,
                 },
                 body: item.archivo,
             });
@@ -387,6 +616,8 @@ async function enviarElegidos() {
         }
     }
 
+    soltarVigilia();
+
     if (intentados > 0 && enviados === intentados) {
         avisoCliente(
             "Listo: " + enviados + (enviados === 1 ? " archivo ya está" : " archivos ya están") +
@@ -396,9 +627,7 @@ async function enviarElegidos() {
         pintarElegidos();
         return;
     }
-    if (intentados === 0) {
-        boton.disabled = false;
-    }
+    if (intentados === 0) boton.disabled = false;
 }
 
 function arrancarCliente(codigo) {
@@ -411,7 +640,9 @@ function arrancarCliente(codigo) {
         if (mensaje.type === "bienvenida") {
             tokenDoc = mensaje.token;
             pintarElegidos();
+            return;
         }
+        alSenalCliente(mensaje);
     });
 
     socketDoc.onclose = (evento) => {

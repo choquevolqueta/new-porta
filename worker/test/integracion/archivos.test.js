@@ -221,6 +221,14 @@ test("el reenvío entre pares solo existe en documentos", async () => {
   const reenviado = await proximo(docs.pc);
   assert.equal(reenviado.type, "item");
   assert.equal(reenviado.id, "abc");
+
+  // Y al revés: lo que manda la PC tiene que llegarle al emisor, o el apretón de
+  // manos de WebRTC se queda en la mitad (la respuesta no vuelve).
+  await proximo(docs.cel); // el estado del emisor, que ya estaba en la cola
+  docs.pc.send(JSON.stringify({ type: "respuesta", sdp: "falsa" }));
+  const vuelta = await proximo(docs.cel);
+  assert.equal(vuelta.type, "respuesta");
+
   await cerrar(docs.cel);
   await cerrar(docs.pc);
 
@@ -239,13 +247,14 @@ test("el preflight permite los encabezados que usa la subida", async () => {
     headers: {
       Origin: "https://choquevolqueta.com",
       "Access-Control-Request-Method": "POST",
-      "Access-Control-Request-Headers": "content-type,x-token,x-nombre",
+      "Access-Control-Request-Headers": "content-type,x-token,x-nombre,x-id",
     },
   });
   assert.equal(r.status, 204);
   const permitidos = (r.headers.get("access-control-allow-headers") ?? "").toLowerCase();
   assert.match(permitidos, /x-token/, `el preflight permite: "${permitidos}"`);
   assert.match(permitidos, /x-nombre/, `el preflight permite: "${permitidos}"`);
+  assert.match(permitidos, /x-id/, `el preflight permite: "${permitidos}"`);
 });
 
 test("el respaldo que nadie baja se descarta", async (t) => {

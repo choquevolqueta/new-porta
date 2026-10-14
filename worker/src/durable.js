@@ -180,6 +180,9 @@ export class Sesion {
       if (this.enDocumentos) {
         this.tokenPc = this.generarToken();
         bienvenida = { type: "bienvenida", token: this.tokenPc };
+        // Los dos lados reenvían: el apretón de manos necesita ida y vuelta, y
+        // la respuesta viaja del mostrador al celular.
+        servidor.addEventListener("message", (evento) => this.reenviar(evento, "pc"));
       }
     } else {
       const cupo = registrarEmisor(this.sesion);
@@ -190,7 +193,7 @@ export class Sesion {
       this.emisor = servidor;
       this.tokenEmisor = this.generarToken();
       bienvenida = { type: "bienvenida", token: this.tokenEmisor };
-      servidor.addEventListener("message", (evento) => this.reenviar(evento));
+      servidor.addEventListener("message", (evento) => this.reenviar(evento, "emisor"));
     }
 
     tocarSesion(this.sesion, Date.now());
@@ -204,9 +207,13 @@ export class Sesion {
     return new Response(null, { status: 101, webSocket: cliente });
   }
 
-  // El apretón de manos de WebRTC y los avisos de archivo van y vienen por acá.
-  reenviar(evento) {
-    if (!this.sesion || !this.enDocumentos || !this.pc) return;
+  // El apretón de manos de WebRTC y los avisos de archivo van y vienen por acá:
+  // lo del emisor va a la PC y lo de la PC al emisor.
+  reenviar(evento, rol) {
+    if (!this.sesion || !this.enDocumentos) return;
+    const destino = rol === "emisor" ? this.pc : this.emisor;
+    if (!destino) return;
+
     let mensaje;
     try {
       mensaje = JSON.parse(typeof evento.data === "string" ? evento.data : "");
@@ -214,7 +221,7 @@ export class Sesion {
       return;
     }
     if (!TIPOS_REENVIADOS.has(mensaje?.type)) return;
-    this.enviar(this.pc, mensaje);
+    this.enviar(destino, mensaje);
   }
 
   soltar(rol, servidor) {
@@ -297,7 +304,7 @@ export class Sesion {
       // Un nombre mal codificado no puede tirar abajo la subida.
     }
 
-    const id = this.generarToken().slice(0, 16);
+    const id = request.headers.get("X-Id") || this.generarToken().slice(0, 16);
     this.items.set(id, { nombre, tipo, bytes, guardadoEn: Date.now() });
 
     tocarSesion(this.sesion, Date.now());

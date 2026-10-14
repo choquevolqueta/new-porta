@@ -120,6 +120,10 @@ function trocear(total, tamano) {
     return { cantidad, ultimo: total - tamano * (cantidad - 1) };
 }
 
+// El trozo del canal de datos es del cliente: el Worker no lo usa (no ve los
+// bytes cuando el envío va directo).
+var TAMANO_TROZO = 16384;
+
 // La descarga, en un solo lugar: la usan la foto y los archivos.
 // El `revoke` va con retraso: si se suelta la URL en el acto, algunos
 // navegadores cortan la descarga que acaba de empezar.

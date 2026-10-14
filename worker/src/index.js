@@ -22,7 +22,7 @@ function cors(origin) {
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     // Los encabezados propios tienen que estar acá: el navegador pregunta antes
     // de mandarlos, y si no están en la lista bloquea el pedido entero.
-    "Access-Control-Allow-Headers": "Content-Type, X-Token, X-Nombre",
+    "Access-Control-Allow-Headers": "Content-Type, X-Token, X-Nombre, X-Id",
     // Para que el celular no pregunte de nuevo antes de cada foto.
     "Access-Control-Max-Age": "600",
     Vary: "Origin",
