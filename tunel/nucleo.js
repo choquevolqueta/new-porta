@@ -128,9 +128,15 @@ function trocear(total, tamano) {
 
 /* ------------------------------------------------------ piezas del archivo */
 
-// 1 MiB por pieza: suficiente para que el viaje de confirmación no marque el
-// ritmo, y chico como para que la memoria del que recibe no crezca.
-var PIEZA_BYTES = 1048576;
+// 64 KB por pieza: el canal de datos rechaza un frame de 1 MiB ("larger than
+// max-message-size"), y 64 KB es lo que aguantan todos los navegadores. Con la
+// ventana de 4 hay 256 KB en vuelo, más que suficiente para saturar la subida de
+// un celular.
+var PIEZA_BYTES = 65536;
+
+// Cuántas piezas puede haber sin confirmar. Cuatro saturan el enlace sin que la
+// memoria del otro lado crezca.
+var VENTANA_PIEZAS = 4;
 
 function piezasDe(total, tamano = PIEZA_BYTES) {
     if (!total || total <= 0) return { cantidad: 0 };

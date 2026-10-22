@@ -17,9 +17,11 @@ import {
 } from "./archivo.js";
 import { permitir } from "./limite.js";
 
-// Piezas de 1 MiB y ventana de 4: el objeto nunca tiene más de cuatro piezas en
+// Piezas de 64 KB y ventana de 4: el objeto nunca tiene más de cuatro piezas en
 // vuelo, y el que manda no se adelanta más de eso sobre lo que la PC confirmó.
-const PIEZA_BYTES = 1024 * 1024;
+// 64 KB y no 1 MiB porque el canal de datos del navegador rechaza frames
+// grandes; el mismo tamaño vale para los dos caminos.
+const PIEZA_BYTES = 65536;
 const VENTANA = 4;
 const ESPERA_CONFIRMO_MS = 20000;
 // Cada cuántas piezas se toca la sesión: escribir almacenamiento en cada una,

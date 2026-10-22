@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 
 const API = process.env.TUNEL_API ?? "http://127.0.0.1:8787";
 const WS = API.replace(/^http/, "ws");
-const PIEZA = 1024 * 1024;
+const PIEZA = 65536;
 const TOPE = 50 * 1024 * 1024;
 
 // Un socket que entiende los dos formatos: los avisos van en JSON y las piezas
@@ -203,7 +203,7 @@ test("el respaldo llega por piezas, en orden, y avisa el final", async () => {
 
   cel.send(JSON.stringify({
     type: "item", id, nombre: "reclamo.pdf", tipo: "application/pdf",
-    bytes: bytes.length, pieza: PIEZA, total: 4,
+    bytes: bytes.length, pieza: PIEZA, total: Math.ceil(bytes.length / PIEZA),
   }));
   const item = await proximo(pc);
   assert.equal(item.type, "item");
@@ -213,7 +213,7 @@ test("el respaldo llega por piezas, en orden, y avisa el final", async () => {
   assert.equal((await subir(codigo, tokenEmisor, bytes, "reclamo.pdf", "application/pdf", { id })).status, 200);
 
   assert.deepEqual(await proximo(pc), { type: "fin", id }, "el fin va después de la última pieza");
-  assert.deepEqual([...pc.piezas.keys()].sort((a, b) => a - b), [0, 1, 2, 3]);
+  assert.equal(pc.piezas.size, Math.ceil(bytes.length / PIEZA), "llegan todas las piezas");
   assert.deepEqual(armar(pc), bytes);
 
   await cerrar(cel);
@@ -234,7 +234,7 @@ test("el respaldo acepta el tope: 50 MiB en piezas de 1 MiB", async () => {
   assert.equal(respuesta.status, 200, "50 MiB entra justo");
   await proximo(pc); // fin
 
-  assert.equal(pc.piezas.size, 50, "50 piezas de 1 MiB");
+  assert.equal(pc.piezas.size, TOPE / PIEZA, "50 MiB en piezas de 64 KB");
   const armado = armar(pc);
   assert.equal(armado.length, bytes.length);
   assert.deepEqual(armado.subarray(0, 16), bytes.subarray(0, 16));

@@ -194,21 +194,27 @@ function agregarItem(mensaje) {
 
 // Guarda una pieza y mueve el progreso. Las piezas pueden llegar salteadas (una
 // reanudación empieza donde quedó); el índice es lo que las ordena.
-function agregarPieza(id, indice, bytes) {
+function agregarPieza(id, indice, bytes, confirmar) {
     const fila = recibidos.get(id);
     if (!fila || fila.estado === "listo") return;
 
+    // Si la pieza ya estaba (un reintento la vuelve a mandar), no se cuenta dos
+    // veces: el progreso y el total se miden por índice.
+    if (!fila.piezas.has(indice)) fila.bytesRecibidos += bytes.length;
     fila.piezas.set(indice, bytes);
-    fila.bytesRecibidos += bytes.length;
     fila.ultimoMovimiento = Date.now();
     fila.progreso = fila.bytes
         ? Math.min(99, Math.round((fila.bytesRecibidos / fila.bytes) * 100))
         : null;
     if (fila.estado === "error") fila.estado = "esperando";
 
-    // La confirmación abre la ventana del que manda: sin esto, el respaldo se
-    // queda esperando y corta a los 20 segundos.
-    mandarSenal({ type: "confirmo", id, indice });
+    // La confirmación abre la ventana del que manda: sin esto, la transferencia
+    // se queda esperando y corta a los 20 segundos. Por el respaldo vuelve por
+    // el WebSocket; por el canal de datos, por el mismo canal.
+    const avisar = confirmar || ((idPieza, indicePieza) => {
+        mandarSenal({ type: "confirmo", id: idPieza, indice: indicePieza });
+    });
+    avisar(id, indice);
 
     pintarLista();
 }
@@ -251,38 +257,8 @@ function marcarItem(id, estado) {
     if (!fila) return;
     if (fila.estado === "listo" && estado !== "listo") return;
     fila.estado = estado;
-    if (estado === "error") pedazosPorItem.delete(id);
     pintarLista();
     if (seleccionado === id) pintarVista();
-}
-
-// El canal avisa "terminé" por adentro del canal: recién ahí los pedazos son
-// todos, y si el total no coincide, la fila no puede decir "recibido".
-function cerrarItemPorCanal(id) {
-    const fila = recibidos.get(id);
-    if (!fila) return;
-    const pedazos = pedazosPorItem.get(id) || [];
-    const total = pedazos.reduce((suma, pedazo) => suma + pedazo.byteLength, 0);
-
-    if (total !== fila.bytes) {
-        pedazosPorItem.delete(id);
-        fila.estado = "error";
-        avisoMostrador("Un archivo llegó incompleto: «" + fila.nombre + "».");
-    } else {
-        fila.blob = new Blob(pedazos, { type: fila.tipo });
-        fila.url = URL.createObjectURL(fila.blob);
-        fila.estado = "listo";
-        pedazosPorItem.delete(id);
-    }
-
-    pintarLista();
-    if (seleccionado === id) pintarVista();
-
-    // Se le avisa al celular que llegó: así puede cerrar tranquilo en vez de
-    // cortar el último pedazo antes de que salga.
-    try {
-        canalEntrante?.send(JSON.stringify({ recibido: id }));
-    } catch {}
 }
 
 function avisoMostrador(texto) {
@@ -526,12 +502,9 @@ function pintarElegidos() {
 var pcCliente = null;
 var pcMostrador = null;
 var canalEntrante = null;
-var canalItemId = null;
-var pedazosPorItem = new Map();
 var relojVigilia = null;
 
 const STUN = { urls: "stun:stun.cloudflare.com:3478" };
-const TECHO_BUFFER = 512 * 1024;
 
 function mandarSenal(mensaje) {
     if (socketDoc && socketDoc.readyState === 1) socketDoc.send(JSON.stringify(mensaje));
@@ -556,10 +529,13 @@ function soltarVigilia() {
 async function enviarPorP2P(item) {
     return new Promise((resolver) => {
         let cerrado = false;
+        let relojConfirmo = null;
+
         const terminar = (ok) => {
             if (cerrado) return;
             cerrado = true;
             clearTimeout(relojEspera);
+            clearTimeout(relojConfirmo);
             resolver(ok);
         };
 
@@ -569,60 +545,78 @@ async function enviarPorP2P(item) {
         const canal = pc.createDataChannel("archivo", { ordered: true });
         canal.binaryType = "arraybuffer";
 
+        // La ventana: no se adelanta más de VENTANA_PIEZAS sobre lo que la PC
+        // confirmó. Es lo que evita llenar la memoria del otro lado.
+        let confirmadas = 0;
+        let despertar = null;
+        let recibido = null;
+
+        const esperarVentana = (indice) => {
+            if (indice - confirmadas < VENTANA_PIEZAS) return Promise.resolve();
+            return new Promise((resolverVentana, rechazar) => {
+                relojConfirmo = setTimeout(() => rechazar(new Error("sin-confirmacion")), 20000);
+                despertar = () => {
+                    clearTimeout(relojConfirmo);
+                    resolverVentana();
+                };
+            }).then(() => esperarVentana(indice));
+        };
+
+        canal.onmessage = (evento) => {
+            let dato;
+            try {
+                dato = JSON.parse(evento.data);
+            } catch {
+                return;
+            }
+            if (!dato) return;
+            if (Number.isFinite(dato.indice)) {
+                confirmadas = Math.max(confirmadas, dato.indice + 1);
+                despertar?.();
+                despertar = null;
+                return;
+            }
+            if (dato.recibido === item.id) recibido?.();
+        };
+
         canal.onopen = async () => {
             // El reloj de los 5 segundos era "no enganchó": una vez abierto el
-            // canal, ya no tiene por qué cortar nada. Sin esto, cualquier archivo
-            // que tardara más de 5 segundos se abortaba a la mitad y se mandaba
-            // de nuevo por el respaldo.
+            // canal, ya no tiene por qué cortar nada.
             clearTimeout(relojEspera);
             try {
                 const bytes = await item.archivo.arrayBuffer();
-                canal.send(JSON.stringify({ id: item.id }));
-
-                let enviados = 0;
+                const cantidad = piezasDe(bytes.byteLength, PIEZA_BYTES).cantidad;
                 let avisado = 0;
-                for (let i = 0; i < bytes.byteLength; i += TAMANO_TROZO) {
-                    while (canal.bufferedAmount > TECHO_BUFFER) {
-                        await new Promise((r) => setTimeout(r, 20));
-                        if (canal.readyState !== "open") throw new Error("cortado");
-                    }
-                    const trozo = bytes.slice(i, Math.min(i + TAMANO_TROZO, bytes.byteLength));
-                    canal.send(trozo);
-                    enviados += trozo.byteLength;
 
-                    const porcentaje = Math.floor((enviados / bytes.byteLength) * 100);
+                for (let indice = 0; indice < cantidad; indice++) {
+                    await esperarVentana(indice);
+                    if (canal.readyState !== "open") throw new Error("cortado");
+
+                    const { desde, hasta } = tramoDe(indice, PIEZA_BYTES, bytes.byteLength);
+                    const trozo = bytes.slice(desde, hasta);
+                    canal.send(JSON.stringify({ type: "pieza", id: item.id, indice, bytes: trozo.byteLength }));
+                    canal.send(trozo);
+
+                    const porcentaje = Math.floor((hasta / bytes.byteLength) * 100);
                     if (porcentaje >= avisado + 5) {
                         avisado = porcentaje;
-                        mandarSenal({ type: "progreso", id: item.id, recibidos: enviados, total: bytes.byteLength });
+                        mandarSenal({ type: "progreso", id: item.id, recibidos: hasta, total: bytes.byteLength });
                     }
                 }
 
-                mandarSenal({ type: "progreso", id: item.id, recibidos: bytes.byteLength, total: bytes.byteLength });
-                // El "terminé" va por el mismo canal que los bytes, y se espera
-                // la confirmación del mostrador antes de cerrar: cerrar apenas
-                // se manda el último pedazo lo deja sin salir del buffer.
                 canal.send(JSON.stringify({ fin: item.id }));
-                await new Promise((resolver) => {
-                    let listo = false;
-                    const terminarEspera = () => {
-                        if (listo) return;
-                        listo = true;
-                        resolver();
-                    };
-                    canal.onmessage = (evento) => {
-                        try {
-                            const dato = JSON.parse(evento.data);
-                            if (dato.recibido === item.id) terminarEspera();
-                        } catch {
-                            // Un mensaje raro no corta la espera.
-                        }
-                    };
-                    setTimeout(terminarEspera, 3000);
+                // Se espera el "recibido" antes de cerrar: cerrar apenas se manda
+                // el último pedazo lo deja sin salir del buffer.
+                await new Promise((resolverEspera) => {
+                    recibido = resolverEspera;
+                    setTimeout(resolverEspera, 3000);
                 });
+                // Se marca antes de cerrar: cerrar dispara el evento de cierre, y
+                // un cierre limpio no puede terminar contando como corte.
+                terminar(true);
                 try {
                     pc.close();
                 } catch {}
-                terminar(true);
             } catch {
                 mandarSenal({ type: "item-error", id: item.id, motivo: "cortado" });
                 try {
@@ -669,8 +663,8 @@ function alSenalCliente(mensaje) {
     }
 }
 
-// Del lado del mostrador: llega la oferta, se arma el canal y los pedazos se
-// guardan hasta que el emisor avise que terminó.
+// Del lado del mostrador: llega la oferta, se arma el canal y las piezas se
+// guardan por índice hasta que el emisor avise que terminó.
 function prepararCanal(oferta) {
     pcMostrador = new RTCPeerConnection({ iceServers: [STUN] });
 
@@ -682,24 +676,36 @@ function prepararCanal(oferta) {
         canalEntrante = evento.channel;
         canalEntrante.binaryType = "arraybuffer";
         canalEntrante.onmessage = (mensaje) => {
-            if (typeof mensaje.data === "string") {
-                try {
-                    const dato = JSON.parse(mensaje.data);
-                    if (dato.fin) {
-                        cerrarItemPorCanal(dato.fin);
-                        return;
-                    }
-                    if (dato.id) {
-                        canalItemId = dato.id;
-                        pedazosPorItem.set(dato.id, []);
-                    }
-                } catch {
-                    // Un mensaje raro no puede tirar abajo la recepción.
-                }
+            if (typeof mensaje.data !== "string") {
+                if (!piezaEnCurso) return;
+                const { id, indice } = piezaEnCurso;
+                piezaEnCurso = null;
+                // La confirmación vuelve por el mismo canal que los bytes.
+                agregarPieza(id, indice, new Uint8Array(mensaje.data), (idPieza, indicePieza) => {
+                    try {
+                        canalEntrante.send(JSON.stringify({ type: "confirmo", id: idPieza, indice: indicePieza }));
+                    } catch {}
+                });
                 return;
             }
-            const pedazos = pedazosPorItem.get(canalItemId);
-            if (pedazos) pedazos.push(mensaje.data);
+
+            try {
+                const dato = JSON.parse(mensaje.data);
+                if (dato && dato.type === "pieza") {
+                    piezaEnCurso = { id: dato.id, indice: dato.indice };
+                    return;
+                }
+                if (dato && dato.fin) {
+                    cerrarItem(dato.fin);
+                    // Se le avisa al celular que llegó, para que pueda cerrar sin
+                    // cortar el último pedazo.
+                    try {
+                        canalEntrante.send(JSON.stringify({ recibido: dato.fin }));
+                    } catch {}
+                }
+            } catch {
+                // Un mensaje raro no puede tirar abajo la recepción.
+            }
         };
     };
 
