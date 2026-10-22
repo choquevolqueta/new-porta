@@ -145,9 +145,23 @@ const llena = contexto.sumarElegidos(fichas(["a.pdf", "b.pdf"]), fichas(["c.pdf"
 assert.deepEqual([...llena.lista].map((f) => f.nombre), ["a.pdf", "b.pdf", "c.pdf"]);
 assert.equal(llena.sobrantes, 1, "el que no entró por el tope se informa");
 
+// Las piezas del archivo: cuántas, qué tramo ocupa cada una, cuál falta y si
+// están todas. Es lo que permite reanudar sin volver a mandar lo que llegó.
+assert.equal(contexto.piezasDe(2_500_000, 1_048_576).cantidad, 3);
+assert.equal(contexto.piezasDe(0, 1_048_576).cantidad, 0);
+assert.deepEqual({ ...contexto.tramoDe(1, 1_048_576, 2_500_000) }, { desde: 1_048_576, hasta: 2_097_152 });
+assert.deepEqual({ ...contexto.tramoDe(2, 1_048_576, 2_500_000) }, { desde: 2_097_152, hasta: 2_500_000 },
+  "la última pieza termina en el total, no en el tamaño de pieza");
+assert.equal(contexto.primeraFaltante(new Set([0, 1, 2]), 5), 3, "si viene en orden, la siguiente");
+assert.equal(contexto.primeraFaltante(new Set([0, 2]), 3), 1, "con un hueco, la primera que falta");
+assert.equal(contexto.primeraFaltante(new Set([0, 1]), 2), 2, "si están todas, devuelve la cantidad");
+assert.equal(contexto.estanTodas(new Set([0, 1, 2]), 3), true);
+assert.equal(contexto.estanTodas(new Set([0, 2]), 3), false, "un hueco no es estar todas");
+
 console.log(JSON.stringify({
   elegidos: suma.lista.map((f) => f.nombre),
   conHora: contexto.nombreArchivo(conHora),
+  piezas: contexto.piezasDe(2_500_000, 1_048_576),
   conBasura: contexto.nombreArchivo("basura"),
   horaMostrada: contexto.horaDe(conHora),
   recorte2x: contexto.recorteCentrado(1920, 1080, 2),

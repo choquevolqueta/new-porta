@@ -120,6 +120,35 @@ function trocear(total, tamano) {
     return { cantidad, ultimo: total - tamano * (cantidad - 1) };
 }
 
+/* ------------------------------------------------------ piezas del archivo */
+
+// 1 MiB por pieza: suficiente para que el viaje de confirmación no marque el
+// ritmo, y chico como para que la memoria del que recibe no crezca.
+var PIEZA_BYTES = 1048576;
+
+function piezasDe(total, tamano = PIEZA_BYTES) {
+    if (!total || total <= 0) return { cantidad: 0 };
+    return { cantidad: Math.ceil(total / tamano) };
+}
+
+// El tramo de bytes que ocupa una pieza; `hasta` no se incluye.
+function tramoDe(indice, tamano, total) {
+    const desde = indice * tamano;
+    return { desde, hasta: Math.min(desde + tamano, total) };
+}
+
+// La primera pieza que falta: es el punto donde se reanuda.
+function primeraFaltante(recibidas, cantidad) {
+    for (let i = 0; i < cantidad; i++) {
+        if (!recibidas.has(i)) return i;
+    }
+    return cantidad;
+}
+
+function estanTodas(recibidas, cantidad) {
+    return primeraFaltante(recibidas, cantidad) === cantidad;
+}
+
 /* ------------------------------------------------------ la lista elegida */
 
 // Dos archivos son el mismo si coinciden nombre, tamaño y fecha: es lo que los
