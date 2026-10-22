@@ -54,7 +54,8 @@
 }
 
 .tunel-vista img,
-.tunel-vista iframe {
+.tunel-vista iframe,
+.tunel-vista video {
     display: block;
     width: 100%;
     height: auto;

@@ -22,6 +22,8 @@ var recibidos = new Map(); // id → { nombre, tipo, bytes, pieza, piezas, blob,
 var piezaEnCurso = null;
 // El archivo que se está mandando, para poder retomarlo si se corta.
 var enCurso = null;
+// Lo que se recibió en la sesión: vive en la memoria del navegador.
+var bytesEnSesion = 0;
 var elegidos = [];
 var seleccionado = null;
 var intentosDoc = 0;
@@ -258,6 +260,12 @@ function cerrarItem(id) {
         // Los 10 minutos para guardarlo corren desde que llegó, no desde el aviso.
         clearTimeout(fila.reloj);
         fila.reloj = setTimeout(() => borrarItem(id), limpiezaMs);
+
+        bytesEnSesion += fila.bytes;
+        if (!cerrarItem.avisado && bytesEnSesion > 200 * 1024 * 1024) {
+            cerrarItem.avisado = true;
+            avisoMostrador("Ya hay más de 200 MB en la lista: guardá lo que necesites y borrá el resto.");
+        }
     }
 
     pintarLista();
@@ -386,6 +394,14 @@ function pintarLista() {
     }
 }
 
+// El aviso de que no se puede mostrar algo en pantalla, pero sí guardar.
+function notaSinVisor(caja) {
+    const nota = document.createElement("p");
+    nota.className = "tunel-nota";
+    nota.textContent = "Este tipo no se puede mostrar acá, pero se puede guardar.";
+    caja.appendChild(nota);
+}
+
 function pintarVista() {
     const caja = el("vista-item");
     caja.textContent = "";
@@ -404,11 +420,25 @@ function pintarVista() {
         marco.src = fila.url;
         marco.title = fila.nombre;
         caja.appendChild(marco);
+    } else if ((fila.tipo || "").startsWith("video/")) {
+        // Un .mov HEVC de iPhone no lo decodifica Chrome ni Windows: si el
+        // navegador dice que no puede, se avisa en vez de dejar un reproductor
+        // negro. El archivo se guarda igual.
+        const prueba = document.createElement("video");
+        if (!prueba.canPlayType(fila.tipo)) {
+            notaSinVisor(caja);
+        } else {
+            const video = document.createElement("video");
+            video.controls = true;
+            video.src = fila.url;
+            video.addEventListener("error", () => {
+                caja.textContent = "";
+                notaSinVisor(caja);
+            });
+            caja.appendChild(video);
+        }
     } else {
-        const nota = document.createElement("p");
-        nota.className = "tunel-nota";
-        nota.textContent = "Este tipo no se puede mostrar acá, pero se puede guardar.";
-        caja.appendChild(nota);
+        notaSinVisor(caja);
     }
     caja.hidden = false;
 }
