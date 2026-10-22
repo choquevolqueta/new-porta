@@ -2,22 +2,48 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 // Lo que se prueba acá es el camino de documentos: el modo de la sesión, el
-// respaldo de un solo uso y el reenvío entre pares. El 1.0 tiene su propio
-// archivo (relay.test.js) y no se toca.
+// respaldo en streaming por piezas y el reenvío entre pares. El 1.0 tiene su
+// propio archivo (relay.test.js) y no se toca.
 
 const API = process.env.TUNEL_API ?? "http://127.0.0.1:8787";
 const WS = API.replace(/^http/, "ws");
+const PIEZA = 1024 * 1024;
+const TOPE = 50 * 1024 * 1024;
 
-const abrir = (ruta) => new Promise((res, rej) => {
+// Un socket que entiende los dos formatos: los avisos van en JSON y las piezas
+// en frames binarios. Con `autoConfirmar` se porta como la PC: guarda cada pieza
+// y confirma, que es lo que el objeto espera para seguir mandando.
+const abrir = (ruta, { autoConfirmar = false } = {}) => new Promise((res, rej) => {
   const ws = new WebSocket(`${WS}${ruta}`);
+  ws.binaryType = "arraybuffer";
   ws.cola = [];
   ws.esperando = [];
+  ws.piezas = new Map();
+  let enCurso = null;
+
   ws.addEventListener("message", (e) => {
+    if (typeof e.data !== "string") {
+      const bytes = new Uint8Array(e.data);
+      if (enCurso) {
+        ws.piezas.set(enCurso.indice, bytes);
+        if (autoConfirmar) {
+          ws.send(JSON.stringify({ type: "confirmo", id: enCurso.id, indice: enCurso.indice }));
+        }
+        enCurso = null;
+      }
+      return;
+    }
+
     const dato = JSON.parse(e.data);
+    if (autoConfirmar && dato.type === "pieza") {
+      enCurso = dato;
+      return;
+    }
     const siguiente = ws.esperando.shift();
     if (siguiente) siguiente(dato);
     else ws.cola.push(dato);
   });
+
   ws.addEventListener("open", () => res(ws));
   ws.addEventListener("error", () => rej(new Error(`no abrió ${ruta}`)));
 });
@@ -36,7 +62,20 @@ const cerrar = (ws) => new Promise((res) => {
 // Espera para comprobar que algo NO llega.
 const noLlega = async (ws, ms = 700) => {
   await new Promise((r) => setTimeout(r, ms));
-  return ws.cola.length === 0 && ws.esperando.length === 0;
+  return ws.cola.length === 0 && ws.esperando.length === 0 && ws.piezas.size === 0;
+};
+
+// Arma el archivo con las piezas que llegaron, en orden de índice.
+const armar = (ws) => {
+  const indices = [...ws.piezas.keys()].sort((a, b) => a - b);
+  const total = indices.reduce((suma, i) => suma + ws.piezas.get(i).length, 0);
+  const salida = new Uint8Array(total);
+  let desde = 0;
+  for (const i of indices) {
+    salida.set(ws.piezas.get(i), desde);
+    desde += ws.piezas.get(i).length;
+  }
+  return salida;
 };
 
 async function nuevaSesion(modo) {
@@ -60,7 +99,7 @@ async function abrirEmisor(codigo) {
 // el token primero y después los estados.
 async function sesionLista(modo = "documentos") {
   const codigo = await nuevaSesion(modo);
-  const pc = await abrir(`/ws/${codigo}?rol=pc`);
+  const pc = await abrir(`/ws/${codigo}?rol=pc`, { autoConfirmar: modo === "documentos" });
 
   let tokenPc = null;
   const primero = await proximo(pc);
@@ -83,19 +122,36 @@ const conTamano = (bytes) => {
   return copia;
 };
 
-const subir = (codigo, token, bytes, nombre = "reclamo.pdf", tipo = "application/pdf") =>
+const subir = (
+  codigo,
+  token,
+  bytes,
+  nombre = "reclamo.pdf",
+  tipo = "application/pdf",
+  { id = "item-" + Math.random().toString(16).slice(2, 10), desde = 0, total = bytes.length, cuerpo } = {},
+) =>
   fetch(`${API}/subir/${codigo}`, {
     method: "POST",
     headers: {
       "Content-Type": tipo,
       "X-Nombre": encodeURIComponent(nombre),
+      "X-Id": id,
+      "X-Bytes": String(total),
+      "X-Desde": String(desde),
       ...(token ? { "X-Token": token } : {}),
     },
-    body: bytes,
+    body: cuerpo ?? bytes,
+    ...(cuerpo ? { duplex: "half" } : {}),
   });
 
-const bajar = (codigo, id, token) =>
-  fetch(`${API}/bajar/${codigo}/${id}`, { headers: token ? { "X-Token": token } : {} });
+// Un cuerpo sin Content-Length (chunked): es el caso en que el Worker de entrada
+// no puede medir de antemano y la cuenta la hace el objeto.
+const enArroyo = (bytes) => new ReadableStream({
+  start(control) {
+    control.enqueue(bytes);
+    control.close();
+  },
+});
 
 test("una sesión de documentos nace con su modo", async () => {
   assert.match(await nuevaSesion("documentos"), /^[2-9A-HJ-NP-Z]{8}$/);
@@ -118,69 +174,124 @@ test("en fotos la PC no recibe token: lo primero sigue siendo el estado", async 
   await cerrar(pc);
 });
 
-test("el respaldo exige el token del emisor, y avisa a la PC", async () => {
+test("el respaldo exige el token del emisor y no guarda nada", async () => {
   const sesion = await sesionLista();
   const { codigo, pc, tokenEmisor } = sesion;
 
   assert.equal((await subir(codigo, null, PDF)).status, 409, "sin token no entra");
   assert.equal((await subir(codigo, "inventado", PDF)).status, 409, "con un token inventado tampoco");
+  assert.equal(pc.piezas.size, 0, "no llegó ninguna pieza");
 
-  const respuesta = await subir(codigo, tokenEmisor, PDF, "reclamo.pdf");
+  const id = "con-token";
+  const respuesta = await subir(codigo, tokenEmisor, PDF, "reclamo.pdf", "application/pdf", { id });
   assert.equal(respuesta.status, 200);
-  const cuerpo = await respuesta.json();
-  assert.equal(cuerpo.ok, true);
-  assert.ok(cuerpo.id, "devuelve el id");
+  assert.equal((await respuesta.json()).ok, true);
 
-  const item = await proximo(pc);
-  assert.equal(item.type, "item");
-  assert.equal(item.nombre, "reclamo.pdf");
-  assert.equal(item.tipo, "application/pdf");
-  assert.equal(item.bytes, PDF.length);
-  assert.deepEqual(await proximo(pc), { type: "item-listo", id: item.id });
+  // El fin cierra la transferencia: hasta que llega, los frames pueden estar en
+  // camino (es lo que espera la PC antes de armar el archivo).
+  assert.deepEqual(await proximo(pc), { type: "fin", id });
+  assert.deepEqual(armar(pc), PDF, "los bytes llegan idénticos");
 
   await cerrar(sesion.cel);
   await cerrar(pc);
 });
 
-test("la PC baja el archivo y lo puede volver a pedir", async () => {
-  const { codigo, pc, pcToken, tokenEmisor, cel } = await sesionLista();
-  await subir(codigo, tokenEmisor, PDF, "reclamo.pdf");
-  const item = await proximo(pc);
-  await proximo(pc);
-
-  const primera = await bajar(codigo, item.id, pcToken);
-  assert.equal(primera.status, 200);
-  assert.deepEqual(new Uint8Array(await primera.arrayBuffer()), PDF);
-  assert.match(primera.headers.get("content-type") ?? "", /application\/pdf/);
-
-  // Un corte de red no puede perder el documento: se queda hasta que vence.
-  const segunda = await bajar(codigo, item.id, pcToken);
-  assert.equal(segunda.status, 200, "todavía se puede pedir de nuevo");
-
-  await cerrar(cel);
-  await cerrar(pc);
-});
-
-test("bajar también exige token, y el del emisor no sirve", async () => {
-  const { codigo, pc, pcToken, tokenEmisor, cel } = await sesionLista();
-  await subir(codigo, tokenEmisor, PDF);
-  const item = await proximo(pc);
-  await proximo(pc);
-
-  assert.equal((await bajar(codigo, item.id, null)).status, 409);
-  assert.equal((await bajar(codigo, item.id, tokenEmisor)).status, 409);
-  assert.equal((await bajar(codigo, item.id, pcToken)).status, 200);
-
-  await cerrar(cel);
-  await cerrar(pc);
-});
-
-test("un archivo más grande que el tope se rechaza y no llega nada", async () => {
+test("el respaldo llega por piezas, en orden, y avisa el final", async () => {
   const { codigo, pc, tokenEmisor, cel } = await sesionLista();
-  const grande = conTamano(6 * 1024 * 1024 + 1);
+  const bytes = conTamano(3 * 1024 * 1024 + 77);
+  const id = "abc123";
 
-  assert.equal((await subir(codigo, tokenEmisor, grande)).status, 413);
+  cel.send(JSON.stringify({
+    type: "item", id, nombre: "reclamo.pdf", tipo: "application/pdf",
+    bytes: bytes.length, pieza: PIEZA, total: 4,
+  }));
+  const item = await proximo(pc);
+  assert.equal(item.type, "item");
+  assert.equal(item.id, id);
+  assert.equal(item.bytes, bytes.length);
+
+  assert.equal((await subir(codigo, tokenEmisor, bytes, "reclamo.pdf", "application/pdf", { id })).status, 200);
+
+  assert.deepEqual(await proximo(pc), { type: "fin", id }, "el fin va después de la última pieza");
+  assert.deepEqual([...pc.piezas.keys()].sort((a, b) => a - b), [0, 1, 2, 3]);
+  assert.deepEqual(armar(pc), bytes);
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("el respaldo acepta el tope: 50 MiB en piezas de 1 MiB", async () => {
+  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
+  const bytes = conTamano(TOPE);
+  const id = "grande";
+
+  cel.send(JSON.stringify({
+    type: "item", id, nombre: "video.mp4", tipo: "application/pdf", bytes: bytes.length,
+  }));
+  await proximo(pc);
+
+  const respuesta = await subir(codigo, tokenEmisor, bytes, "video.pdf", "application/pdf", { id });
+  assert.equal(respuesta.status, 200, "50 MiB entra justo");
+  await proximo(pc); // fin
+
+  assert.equal(pc.piezas.size, 50, "50 piezas de 1 MiB");
+  const armado = armar(pc);
+  assert.equal(armado.length, bytes.length);
+  assert.deepEqual(armado.subarray(0, 16), bytes.subarray(0, 16));
+  assert.deepEqual(armado.subarray(-16), bytes.subarray(-16), "el final también llega");
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("un total anunciado mayor al tope se rechaza sin leer el cuerpo", async () => {
+  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
+
+  const respuesta = await subir(codigo, tokenEmisor, PDF, "x.pdf", "application/pdf", { total: TOPE + 1 });
+  assert.equal(respuesta.status, 413);
   assert.ok(await noLlega(pc), "la PC no se enteró de nada");
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("un cuerpo declarado más largo que el total se rechaza sin avisar", async () => {
+  // Con Content-Length, el Worker de entrada lo corta antes de llegar al objeto:
+  // la PC no se entera de nada.
+  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
+
+  const respuesta = await subir(codigo, tokenEmisor, conTamano(40), "x.pdf", "application/pdf", { total: 30 });
+  assert.equal(respuesta.status, 413);
+  assert.ok(await noLlega(pc), "la PC no se enteró de nada");
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("un cuerpo en streaming que miente se corta a mitad y avisa", async () => {
+  // Sin Content-Length, la cuenta la hace el objeto: corta el stream y le dice a
+  // la PC que ese archivo no terminó.
+  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
+  const id = "mentiroso";
+
+  const respuesta = await subir(codigo, tokenEmisor, conTamano(40), "x.pdf", "application/pdf",
+    { id, total: 30, cuerpo: enArroyo(conTamano(40)) });
+  assert.equal(respuesta.status, 413, "el número manda, no el cuerpo");
+
+  const aviso = await proximo(pc);
+  assert.equal(aviso.type, "item-error");
+  assert.equal(aviso.id, id);
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("un tramo que se va del total se rechaza", async () => {
+  const { codigo, tokenEmisor, cel, pc } = await sesionLista();
+
+  const respuesta = await subir(codigo, tokenEmisor, conTamano(40), "x.pdf", "application/pdf",
+    { total: 30, desde: 10 });
+  assert.equal(respuesta.status, 413);
 
   await cerrar(cel);
   await cerrar(pc);
@@ -188,10 +299,8 @@ test("un archivo más grande que el tope se rechaza y no llega nada", async () =
 
 test("una etiqueta que miente sobre el contenido se rechaza", async () => {
   const { codigo, pc, tokenEmisor, cel } = await sesionLista();
-  const texto = new Uint8Array([0x68, 0x6f, 0x6c, 0x61]);
+  const texto = new Uint8Array([0x68, 0x6f, 0x6c, 0x61, 0x2c, 0x20, 0x6d, 0x75]);
 
-  // El tipo que no se puede comprobar da 415: no es que sea grande, es que no es
-  // lo que dice ser.
   assert.equal((await subir(codigo, tokenEmisor, texto, "carta.pdf", "application/pdf")).status, 415);
   assert.ok(await noLlega(pc));
 
@@ -199,10 +308,24 @@ test("una etiqueta que miente sobre el contenido se rechaza", async () => {
   await cerrar(pc);
 });
 
+test("el respaldo no acepta nada si no hay PC escuchando", async () => {
+  const codigo = await nuevaSesion("documentos");
+  const { ws: cel, token } = await abrirEmisor(codigo);
+
+  const r = await subir(codigo, token, PDF);
+  assert.equal(r.status, 409, "sin PC no hay a quién entregarlo");
+
+  await cerrar(cel);
+});
+
+test("ya no hay ruta de descarga: el respaldo no deja nada guardado", async () => {
+  const r = await fetch(`${API}/bajar/ABCDEFGH/cualquiera`);
+  assert.equal(r.status, 404);
+});
+
 test("cada modo rechaza las rutas del otro", async () => {
   const fotos = await nuevaSesion();
   assert.equal((await subir(fotos, null, PDF)).status, 404, "fotos no tiene respaldo");
-  assert.equal((await bajar(fotos, "cualquiera", null)).status, 404, "ni descarga");
 
   const docs = await sesionLista();
   const subida = await fetch(`${API}/upload/${docs.codigo}?at=${new Date().toISOString()}`, {
@@ -242,74 +365,18 @@ test("el reenvío entre pares solo existe en documentos", async () => {
 
 test("el preflight permite los encabezados que usa la subida", async () => {
   // Los tests de Node no hacen preflight: solo el navegador. Por eso este test
-  // existe — ya nos costó un día con X-Token, y X-Nombre es lo mismo.
+  // existe — ya nos costó dos veces, con X-Token y con X-Nombre.
   const r = await fetch(`${API}/subir/ABCDEFGH`, {
     method: "OPTIONS",
     headers: {
       Origin: "https://choquevolqueta.com",
       "Access-Control-Request-Method": "POST",
-      "Access-Control-Request-Headers": "content-type,x-token,x-nombre,x-id",
+      "Access-Control-Request-Headers": "content-type,x-token,x-nombre,x-id,x-bytes,x-desde",
     },
   });
   assert.equal(r.status, 204);
   const permitidos = (r.headers.get("access-control-allow-headers") ?? "").toLowerCase();
-  assert.match(permitidos, /x-token/, `el preflight permite: "${permitidos}"`);
-  assert.match(permitidos, /x-nombre/, `el preflight permite: "${permitidos}"`);
-  assert.match(permitidos, /x-id/, `el preflight permite: "${permitidos}"`);
-});
-
-test("el respaldo no acepta nada si no hay PC escuchando", async () => {
-  // Sin PC no hay a quién entregarlo: guardarlo sería prometer una entrega que
-  // se descarta sola dos minutos después, con el cliente creyendo que llegó.
-  const codigo = await nuevaSesion("documentos");
-  const { ws: cel, token } = await abrirEmisor(codigo);
-
-  const r = await subir(codigo, token, PDF);
-  assert.equal(r.status, 409, "sin PC no se guarda nada");
-
-  await cerrar(cel);
-});
-
-test("el respaldo tiene tope de cantidad, no solo de tamaño", async () => {
-  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
-  let ultimo = 0;
-  for (let i = 0; i < 21; i++) {
-    ultimo = (await subir(codigo, tokenEmisor, PDF, "reclamo-" + i + ".pdf")).status;
+  for (const encabezado of ["x-token", "x-nombre", "x-id", "x-bytes", "x-desde"]) {
+    assert.match(permitidos, new RegExp(encabezado), `el preflight permite: "${permitidos}"`);
   }
-  assert.equal(ultimo, 413, "el archivo 21 ya no entra");
-
-  await cerrar(cel);
-  await cerrar(pc);
-});
-
-test("el archivo del respaldo sigue disponible para reintentar", async () => {
-  // Se queda hasta que vence: una bajada cortada no puede perder el documento.
-  const { codigo, pc, pcToken, tokenEmisor, cel } = await sesionLista();
-  await subir(codigo, tokenEmisor, PDF);
-  const item = await proximo(pc);
-  await proximo(pc);
-
-  assert.equal((await bajar(codigo, item.id, pcToken)).status, 200);
-  assert.equal((await bajar(codigo, item.id, pcToken)).status, 200, "todavía se puede pedir de nuevo");
-
-  await cerrar(cel);
-  await cerrar(pc);
-});
-
-test("el respaldo que nadie baja se descarta", async (t) => {
-  const salud = await (await fetch(`${API}/health`)).json();
-  if (!(salud.ttl_respaldo <= 60000)) {
-    t.skip(`el server tiene el respaldo en ${salud.ttl_respaldo} ms: levantalo con --var TTL_RESPALDO_MS:2500`);
-    return;
-  }
-
-  const { codigo, pc, pcToken, tokenEmisor, cel } = await sesionLista();
-  await subir(codigo, tokenEmisor, PDF);
-  const item = await proximo(pc);
-  await new Promise((r) => setTimeout(r, 3000));
-
-  assert.equal((await bajar(codigo, item.id, pcToken)).status, 404, "se descartó solo");
-
-  await cerrar(cel);
-  await cerrar(pc);
 });

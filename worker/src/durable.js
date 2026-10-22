@@ -1,26 +1,30 @@
 // Las dos piezas con estado del túnel.
 //
 // `Sesion` es una instancia única por código: sabe quién está del otro lado,
-// empuja la foto y —en modo documentos— guarda los archivos hasta que la PC los
-// baja. `Limite` es una sola instancia para todo el mundo y lleva la cuenta de
+// empuja la foto y —en modo documentos— hace pasar los archivos de un lado al
+// otro. `Limite` es una sola instancia para todo el mundo y lleva la cuenta de
 // sesiones nuevas por IP.
 //
-// Ni la foto ni los archivos se guardan: viven en memoria el tiempo que tardan
-// en cruzar.
+// Ni la foto ni los archivos se guardan: el archivo se lee del pedido y se
+// reenvía a la PC en piezas, sin tenerlo entero en memoria.
 
 import {
   crearSesion, estaExpirada, tocarSesion, registrarEmisor, liberarEmisor,
   puedeRecibirFoto, TTL_SESION_MS,
 } from "./sesion.js";
 import {
-  MODOS, MODO_POR_DEFECTO, TTL_RESPALDO_MS, modoValido, puedeRecibirArchivo,
+  MODOS, MODO_POR_DEFECTO, MAX_ARCHIVO_BYTES, modoValido, puedeRecibirArchivo,
 } from "./archivo.js";
 import { permitir } from "./limite.js";
 
-// El canal es abierto: aunque el archivo tenga su tope, el objeto no puede
-// quedarse con lo que le manden sin límite.
-const MAX_ITEMS = 20;
-const MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+// Piezas de 1 MiB y ventana de 4: el objeto nunca tiene más de cuatro piezas en
+// vuelo, y el que manda no se adelanta más de eso sobre lo que la PC confirmó.
+const PIEZA_BYTES = 1024 * 1024;
+const VENTANA = 4;
+const ESPERA_CONFIRMO_MS = 20000;
+// Cada cuántas piezas se toca la sesión: escribir almacenamiento en cada una,
+// en medio de un stream de 50 MiB, es ruido al pedo.
+const PIEZAS_POR_TOQUE = 8;
 
 const json = (cuerpo, status) =>
   new Response(JSON.stringify(cuerpo), {
@@ -34,6 +38,15 @@ const TIPOS_REENVIADOS = new Set([
   "item", "progreso", "item-ok", "item-error",
   "oferta", "respuesta", "candidato",
 ]);
+
+// Un pedido rechazado con el cuerpo sin leer deja al runtime avisando: se
+// cancela el stream en vez de bufferizarlo (que es justo lo que se quiere
+// evitar con un video de 50 MB).
+async function descartar(request) {
+  try {
+    await request.body?.cancel();
+  } catch {}
+}
 
 // Base64 por trozos: un String.fromCharCode(...bytes) con 600 KB revienta el stack.
 function aBase64(bytes) {
@@ -55,13 +68,12 @@ export class Sesion {
     this.pc = null;
     this.emisor = null;
     // Los tokens: el del emisor para subir la foto y el archivo; el de la PC
-    // para bajar del respaldo. Sin ellos, cualquiera con el código entra.
+    // para bajar del respaldo. Viven con la sesión, no con la conexión: si el
+    // celular se cae y vuelve, tiene que poder reanudar con el mismo token.
     this.tokenEmisor = null;
     this.tokenPc = null;
-    // Los archivos del respaldo, en memoria: id → { nombre, tipo, bytes, guardadoEn }.
-    this.items = new Map();
-    this.bytesGuardados = 0;
-    this.ttlRespaldo = Number(env?.TTL_RESPALDO_MS ?? TTL_RESPALDO_MS);
+    // Las transferencias en curso: id → { total, desde, confirmado, despertar }.
+    this.transferencias = new Map();
   }
 
   get ttl() {
@@ -79,7 +91,6 @@ export class Sesion {
     if (url.pathname.startsWith("/ws/")) return this.abrirSocket(request, url);
     if (url.pathname.startsWith("/upload/")) return this.recibirFoto(request, url);
     if (url.pathname.startsWith("/subir/")) return this.recibirArchivo(request);
-    if (url.pathname.startsWith("/bajar/")) return this.entregarArchivo(request, url);
     return json({ error: "no-existe" }, 404);
   }
 
@@ -93,27 +104,12 @@ export class Sesion {
     return true;
   }
 
-  // La alarma es una sola para dos vencimientos: la sesión y los archivos del
-  // respaldo que nadie bajó. Se programa para el más próximo.
   async programarAlarma(ahora) {
-    let proxima = (this.sesion?.ultimaActividad ?? ahora) + this.ttl;
-    if (this.items.size) {
-      const primero = Math.min(...[...this.items.values()].map((item) => item.guardadoEn));
-      proxima = Math.min(proxima, primero + this.ttlRespaldo);
-    }
-    await this.ctx.storage.setAlarm(proxima);
+    await this.ctx.storage.setAlarm((this.sesion?.ultimaActividad ?? ahora) + this.ttl);
   }
 
   async alarm() {
     const ahora = Date.now();
-
-    for (const [id, item] of this.items) {
-      if (ahora - item.guardadoEn >= this.ttlRespaldo) {
-        this.bytesGuardados -= item.bytes.length;
-        this.items.delete(id);
-      }
-    }
-
     if (this.sesion && !estaExpirada(this.sesion, ahora, this.ttl)) {
       // Hubo actividad y la alarma quedó vieja: se corre.
       await this.programarAlarma(ahora);
@@ -130,18 +126,16 @@ export class Sesion {
     this.emisor = null;
     this.tokenEmisor = null;
     this.tokenPc = null;
-    this.items.clear();
-    this.bytesGuardados = 0;
+    this.transferencias.clear();
   }
 
   async crear(request) {
-    const { codigo, ttl, modo, respaldo } = await request.json();
+    const { codigo, ttl, modo } = await request.json();
     const ahora = Date.now();
     if (!this.sesion) {
       this.sesion = crearSesion(ahora, codigo, ttl);
       // Sin modo, la sesión es de fotos: el 1.0 no manda nada y sigue igual.
       this.sesion.modo = modoValido(modo) ? modo : MODO_POR_DEFECTO;
-      if (Number(respaldo) > 0) this.ttlRespaldo = Number(respaldo);
     }
     await this.programarAlarma(ahora);
     return json({ codigo: this.sesion.codigo }, 200);
@@ -158,6 +152,17 @@ export class Sesion {
   enviar(socket, mensaje) {
     try {
       socket.send(JSON.stringify(mensaje));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Las piezas viajan como frame binario: en base64 pesarían un tercio más y
+  // ocuparían el doble en memoria.
+  enviarBinario(socket, bytes) {
+    try {
+      socket.send(bytes);
       return true;
     } catch {
       return false;
@@ -201,7 +206,12 @@ export class Sesion {
         return new Response(null, { status: 101, webSocket: cliente });
       }
       this.emisor = servidor;
-      this.tokenEmisor = this.generarToken();
+      // En documentos el token vive con la sesión: si el celular se cae y
+      // vuelve, la subida en curso no queda con un token viejo. En fotos sigue
+      // rotando en cada conexión, que es lo que el 1.0 ya probaba.
+      this.tokenEmisor = this.enDocumentos
+        ? (this.tokenEmisor ?? this.generarToken())
+        : this.generarToken();
       bienvenida = { type: "bienvenida", token: this.tokenEmisor };
       servidor.addEventListener("message", (evento) => this.reenviar(evento, "emisor"));
     }
@@ -221,8 +231,6 @@ export class Sesion {
   // lo del emisor va a la PC y lo de la PC al emisor.
   reenviar(evento, rol) {
     if (!this.sesion || !this.enDocumentos) return;
-    const destino = rol === "emisor" ? this.pc : this.emisor;
-    if (!destino) return;
 
     let mensaje;
     try {
@@ -230,21 +238,58 @@ export class Sesion {
     } catch {
       return;
     }
-    if (!TIPOS_REENVIADOS.has(mensaje?.type)) return;
+    if (!mensaje || typeof mensaje !== "object") return;
+
+    // La confirmación de la PC es para el objeto, no para el celular: es lo que
+    // abre la ventana de envío.
+    if (mensaje.type === "confirmo") {
+      this.registrarConfirmo(mensaje);
+      return;
+    }
+
+    if (!TIPOS_REENVIADOS.has(mensaje.type)) return;
+    const destino = rol === "emisor" ? this.pc : this.emisor;
+    if (!destino) return;
     this.enviar(destino, mensaje);
+  }
+
+  registrarConfirmo(mensaje) {
+    const transferencia = this.transferencias.get(mensaje.id);
+    if (!transferencia) return;
+    const indice = Number(mensaje.indice);
+    if (!Number.isFinite(indice)) return;
+    transferencia.confirmado = Math.max(transferencia.confirmado, indice);
+    transferencia.despertar?.();
+    transferencia.despertar = null;
+  }
+
+  // Espera a que la ventana se abra. Si la PC no confirma en 20 s, se corta: no
+  // se queda colgado para siempre.
+  async esperarTurno(transferencia, indice) {
+    if (indice - transferencia.confirmado < VENTANA) return;
+    await new Promise((resolver, rechazar) => {
+      const reloj = setTimeout(() => {
+        transferencia.despertar = null;
+        rechazar(new Error("sin-confirmacion"));
+      }, ESPERA_CONFIRMO_MS);
+      transferencia.despertar = () => {
+        clearTimeout(reloj);
+        resolver();
+      };
+    });
+    return this.esperarTurno(transferencia, indice);
   }
 
   soltar(rol, servidor) {
     if (rol === "pc") {
       if (this.pc !== servidor) return;
       this.pc = null;
-      this.tokenPc = null;
       if (this.sesion) this.sesion.pc = false;
       // Sin PC no hay destino: el celular se entera por el cierre, no por un
       // mensaje que ya nadie podría entregar.
       const cel = this.emisor;
       this.emisor = null;
-      this.tokenEmisor = null;
+      if (!this.enDocumentos) this.tokenEmisor = null;
       if (this.sesion) liberarEmisor(this.sesion);
       try {
         cel?.close(4003, "la pc se desconecto");
@@ -253,7 +298,7 @@ export class Sesion {
     }
     if (this.emisor !== servidor) return;
     this.emisor = null;
-    this.tokenEmisor = null;
+    if (!this.enDocumentos) this.tokenEmisor = null;
     if (this.sesion) liberarEmisor(this.sesion);
     if (this.pc) this.avisar(this.pc);
   }
@@ -289,72 +334,134 @@ export class Sesion {
     return json({ ok: true }, 200);
   }
 
-  // El respaldo: el archivo queda guardado en memoria hasta que la PC lo baja.
+  // El respaldo: el archivo no se guarda. Se lee del pedido y se reenvía a la PC
+  // en piezas de 1 MiB, con ventana y confirmación, igual que el camino directo.
   async recibirArchivo(request) {
-    const bytes = new Uint8Array(await request.arrayBuffer());
-    if (!this.viva()) return json({ error: "sin-sesion" }, 404);
-    if (!this.enDocumentos) return json({ error: "sin-sesion" }, 404);
+    if (!this.viva()) {
+      await descartar(request);
+      return json({ error: "sin-sesion" }, 404);
+    }
+    if (!this.enDocumentos) {
+      await descartar(request);
+      return json({ error: "sin-sesion" }, 404);
+    }
 
     if (!this.emisor || !this.tokenEmisor || request.headers.get("X-Token") !== this.tokenEmisor) {
+      await descartar(request);
       return json({ error: "sin-token" }, 409);
     }
 
-    // Sin PC no hay a quién entregarlo: guardarlo sería prometer una entrega que
-    // no va a pasar (y que se descarta a los dos minutos sin que nadie se entere).
-    if (!this.pc) return json({ error: "sin-pc" }, 409);
+    // Sin PC no hay a quién entregarlo: no hay nada que guardar.
+    if (!this.pc) {
+      await descartar(request);
+      return json({ error: "sin-pc" }, 409);
+    }
 
-    // El volumen también tiene tope: el canal es abierto y el objeto no puede
-    // quedarse con lo que le manden.
-    if (this.items.size >= MAX_ITEMS) return json({ error: "lleno" }, 413);
-    if (this.bytesGuardados + bytes.length > MAX_TOTAL_BYTES) return json({ error: "lleno" }, 413);
-
+    const total = Number(request.headers.get("X-Bytes") ?? 0);
+    const desde = Number(request.headers.get("X-Desde") ?? 0);
     const tipo = request.headers.get("Content-Type") ?? "";
-    const puede = puedeRecibirArchivo(this.sesion.modo, tipo, bytes);
+    const id = request.headers.get("X-Id") || this.generarToken().slice(0, 16);
+
+    if (!Number.isFinite(total) || total <= 0 || total > MAX_ARCHIVO_BYTES) {
+      await descartar(request);
+      return json({ error: "grande" }, 413);
+    }
+    if (!Number.isFinite(desde) || desde < 0 || desde >= total) {
+      await descartar(request);
+      return json({ error: "rango" }, 413);
+    }
+
+    const lector = request.body?.getReader();
+    if (!lector) return json({ error: "vacio" }, 400);
+
+    // Los primeros bytes deciden el tipo. Si el tramo viene reanudado, los bytes
+    // no son la cabecera del archivo: ahí la firma no se puede comprobar.
+    const primero = await lector.read();
+    if (primero.done) {
+      await lector.cancel();
+      return json({ error: "vacio" }, 400);
+    }
+
+    const puede = puedeRecibirArchivo(this.sesion.modo, tipo, primero.value, total, desde);
     if (!puede.ok) {
-      // 413 si es grande, 400 si vino vacío, 415 si dice ser algo que no es.
+      await lector.cancel();
       const estado = puede.error === "grande" ? 413 : puede.error === "vacio" ? 400 : 415;
       return json({ error: puede.error }, estado);
     }
 
-    let nombre = "archivo";
+    const transferencia = {
+      id,
+      total,
+      desde,
+      confirmado: Math.floor(desde / PIEZA_BYTES) - 1,
+      despertar: null,
+    };
+    this.transferencias.set(id, transferencia);
+
+    let indice = Math.floor(desde / PIEZA_BYTES);
+    let reenviados = 0;
+
+    const mandarPieza = async (bytes) => {
+      // El cuerpo no puede pasarse del total anunciado, aunque el cliente lo
+      // haya declarado de menos: se corta a mitad y la PC se entera.
+      if (desde + reenviados + bytes.byteLength > total) throw new Error("grande");
+      await this.esperarTurno(transferencia, indice);
+      if (!this.pc) throw new Error("sin-pc");
+
+      const avisada = this.enviar(this.pc, { type: "pieza", id, indice, bytes: bytes.byteLength });
+      const entregada = avisada && this.enviarBinario(this.pc, bytes);
+      if (!entregada) throw new Error("sin-pc");
+
+      reenviados += bytes.byteLength;
+      indice += 1;
+      if (indice % PIEZAS_POR_TOQUE === 0) tocarSesion(this.sesion, Date.now());
+    };
+
+    // El tramo puede empezar en el medio de una pieza; la primera se cierra en
+    // la frontera absoluta para que los índices coincidan con los del celular.
+    let capacidad = PIEZA_BYTES - (desde % PIEZA_BYTES);
+    let buffer = new Uint8Array(capacidad);
+    let lleno = 0;
+
+    const empujar = async (trozo) => {
+      let i = 0;
+      while (i < trozo.byteLength) {
+        const copiar = Math.min(buffer.byteLength - lleno, trozo.byteLength - i);
+        buffer.set(trozo.subarray(i, i + copiar), lleno);
+        lleno += copiar;
+        i += copiar;
+        if (lleno === buffer.byteLength) {
+          await mandarPieza(buffer);
+          capacidad = PIEZA_BYTES;
+          buffer = new Uint8Array(capacidad);
+          lleno = 0;
+        }
+      }
+    };
+
     try {
-      nombre = decodeURIComponent(request.headers.get("X-Nombre") ?? "") || nombre;
-    } catch {
-      // Un nombre mal codificado no puede tirar abajo la subida.
+      await empujar(primero.value);
+      while (true) {
+        const { done, value } = await lector.read();
+        if (done) break;
+        await empujar(value);
+      }
+      if (lleno > 0) await mandarPieza(buffer.subarray(0, lleno));
+
+      this.enviar(this.pc, { type: "fin", id });
+      tocarSesion(this.sesion, Date.now());
+      await this.programarAlarma(Date.now());
+      return json({ ok: true, id }, 200);
+    } catch (error) {
+      const motivo = error?.message === "grande" ? "grande" : "cortado";
+      this.enviar(this.pc, { type: "item-error", id, motivo });
+      return json({ error: motivo }, motivo === "grande" ? 413 : 409);
+    } finally {
+      this.transferencias.delete(id);
+      try {
+        await lector.cancel();
+      } catch {}
     }
-
-    const id = request.headers.get("X-Id") || this.generarToken().slice(0, 16);
-    this.items.set(id, { nombre, tipo, bytes, guardadoEn: Date.now() });
-    this.bytesGuardados += bytes.length;
-
-    tocarSesion(this.sesion, Date.now());
-    await this.programarAlarma(Date.now());
-
-    this.enviar(this.pc, { type: "item", id, nombre, tipo, bytes: bytes.length });
-    this.enviar(this.pc, { type: "item-listo", id });
-
-    return json({ ok: true, id }, 200);
-  }
-
-  async entregarArchivo(request, url) {
-    if (!this.viva()) return json({ error: "sin-sesion" }, 404);
-    if (!this.enDocumentos) return json({ error: "sin-sesion" }, 404);
-
-    if (!this.tokenPc || request.headers.get("X-Token") !== this.tokenPc) {
-      return json({ error: "sin-token" }, 409);
-    }
-
-    const id = url.pathname.split("/").pop();
-    const item = this.items.get(id);
-    if (!item) return json({ error: "sin-item" }, 404);
-
-    // El archivo se queda hasta que venza: si la bajada se corta a la mitad, la
-    // PC puede volver a pedirlo. Borrarlo al entregarlo convertía un hipo de red
-    // en un documento perdido.
-    return new Response(item.bytes, {
-      status: 200,
-      headers: { "Content-Type": item.tipo },
-    });
   }
 }
 
