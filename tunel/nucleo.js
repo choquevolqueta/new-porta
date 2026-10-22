@@ -70,9 +70,15 @@ async function crearSesion(modo) {
 
 // El mismo WebSocket para las dos pantallas: quien lo pide decide qué hacer con
 // cada mensaje que llega.
-function abrirSocket(codigo, rol, alMensaje) {
+function abrirSocket(codigo, rol, alMensaje, alBinario) {
     const ws = new WebSocket(API_BASE.replace(/^http/, "ws") + "/ws/" + codigo + "?rol=" + rol);
+    // Las piezas de un archivo llegan como frames binarios; el resto es JSON.
+    ws.binaryType = "arraybuffer";
     ws.onmessage = (evento) => {
+        if (typeof evento.data !== "string") {
+            alBinario?.(evento.data);
+            return;
+        }
         let mensaje;
         try {
             mensaje = JSON.parse(evento.data);

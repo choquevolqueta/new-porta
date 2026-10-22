@@ -7,7 +7,7 @@
 
 // El mismo tope que aplica el Worker, repetido a propósito: son dos despliegues
 // distintos y no hay build que comparta el número.
-var MAX_ARCHIVO_BYTES = 6 * 1024 * 1024;
+var MAX_ARCHIVO_BYTES = 50 * 1024 * 1024;
 
 // Cuántos archivos por sesión. El Worker corta en 20 y el mostrador también: si
 // acá se dejaran elegir 30, la mitad se caería sola y sin explicación.
@@ -17,7 +17,9 @@ var codigoActual = null;
 var socketDoc = null;
 var tokenDoc = null;
 var clienteConectado = false;
-var recibidos = new Map(); // id → { nombre, tipo, bytes, blob, url, estado, progreso, reloj }
+var recibidos = new Map(); // id → { nombre, tipo, bytes, pieza, piezas, blob, url, estado, … }
+// El frame binario que sigue a un aviso `pieza` es la pieza anunciada.
+var piezaEnCurso = null;
 var elegidos = [];
 var seleccionado = null;
 var intentosDoc = 0;
@@ -62,8 +64,14 @@ function alMensajeMostrador(mensaje) {
         agregarItem(mensaje);
         return;
     }
-    if (mensaje.type === "item-listo") {
-        bajarItem(mensaje.id);
+    if (mensaje.type === "pieza") {
+        // La cabecera dice qué pieza es; el frame binario que viene atrás trae
+        // los bytes. Van en orden, así que alcanza con recordar la última.
+        piezaEnCurso = { id: mensaje.id, indice: mensaje.indice };
+        return;
+    }
+    if (mensaje.type === "fin") {
+        cerrarItem(mensaje.id);
         return;
     }
     if (mensaje.type === "oferta") {
@@ -125,7 +133,13 @@ function conectarMostrador() {
         socketDoc.close();
     }
 
-    socketDoc = abrirSocket(codigoActual, "pc", alMensajeMostrador);
+    socketDoc = abrirSocket(codigoActual, "pc", alMensajeMostrador, (bytes) => {
+        // El binario pertenece a la última pieza anunciada.
+        if (!piezaEnCurso) return;
+        const { id, indice } = piezaEnCurso;
+        piezaEnCurso = null;
+        agregarPieza(id, indice, new Uint8Array(bytes));
+    });
     socketDoc.onclose = () => {
         // Lo que quedó a medias no se deja como fantasma: si el que mandaba se
         // fue, esas filas no van a terminar nunca.
@@ -160,6 +174,9 @@ function agregarItem(mensaje) {
         nombre: mensaje.nombre,
         tipo: mensaje.tipo,
         bytes: mensaje.bytes,
+        pieza: mensaje.pieza || PIEZA_BYTES,
+        piezas: new Map(),
+        bytesRecibidos: 0,
         blob: null,
         url: null,
         estado: "esperando",
@@ -175,27 +192,58 @@ function agregarItem(mensaje) {
     pintarEscenarioDocs();
 }
 
-async function bajarItem(id) {
+// Guarda una pieza y mueve el progreso. Las piezas pueden llegar salteadas (una
+// reanudación empieza donde quedó); el índice es lo que las ordena.
+function agregarPieza(id, indice, bytes) {
     const fila = recibidos.get(id);
-    if (!fila || fila.blob) return;
+    if (!fila || fila.estado === "listo") return;
 
-    fila.estado = "bajando";
+    fila.piezas.set(indice, bytes);
+    fila.bytesRecibidos += bytes.length;
+    fila.ultimoMovimiento = Date.now();
+    fila.progreso = fila.bytes
+        ? Math.min(99, Math.round((fila.bytesRecibidos / fila.bytes) * 100))
+        : null;
+    if (fila.estado === "error") fila.estado = "esperando";
+
+    // La confirmación abre la ventana del que manda: sin esto, el respaldo se
+    // queda esperando y corta a los 20 segundos.
+    mandarSenal({ type: "confirmo", id, indice });
+
     pintarLista();
+}
 
-    try {
-        const respuesta = await fetch(API_BASE + "/bajar/" + codigoActual + "/" + id, {
-            headers: { "X-Token": tokenDoc },
-        });
-        if (!respuesta.ok) throw new Error("sin-item");
-        fila.blob = await respuesta.blob();
+// El archivo está cuando están todas las piezas y el total coincide. Si no, la
+// fila no puede decir "recibido".
+function cerrarItem(id) {
+    const fila = recibidos.get(id);
+    if (!fila || fila.estado === "listo") return;
+
+    const cantidad = piezasDe(fila.bytes, fila.pieza).cantidad;
+    const faltan = primeraFaltante(new Set(fila.piezas.keys()), cantidad);
+    let total = 0;
+    for (const bytes of fila.piezas.values()) total += bytes.length;
+
+    if (faltan !== cantidad || total !== fila.bytes) {
+        fila.estado = "error";
+        avisoMostrador("Un archivo llegó incompleto: «" + fila.nombre + "».");
+    } else {
+        const partes = [];
+        for (let i = 0; i < cantidad; i++) partes.push(fila.piezas.get(i));
+        fila.blob = new Blob(partes, { type: fila.tipo });
         fila.url = URL.createObjectURL(fila.blob);
         fila.estado = "listo";
-    } catch {
-        fila.estado = "error";
+        fila.progreso = 100;
+        fila.piezas.clear();
+
+        // Los 10 minutos para guardarlo corren desde que llegó, no desde el aviso.
+        clearTimeout(fila.reloj);
+        fila.reloj = setTimeout(() => borrarItem(id), limpiezaMs);
     }
 
     pintarLista();
     if (seleccionado === id) pintarVista();
+    pintarEscenarioDocs();
 }
 
 function marcarItem(id, estado) {
@@ -666,8 +714,8 @@ function prepararCanal(oferta) {
 /* -------------------------------------------------------------- el envío */
 
 // El respaldo, con progreso: un `fetch` no deja ver cuánto falta, así que va
-// por XHR.
-function subirPorRespaldo(item) {
+// por XHR. `desde` es el byte donde se retoma.
+function subirPorRespaldo(item, desde = 0) {
     return new Promise((resolver) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", API_BASE + "/subir/" + codigoActual);
@@ -675,13 +723,15 @@ function subirPorRespaldo(item) {
         xhr.setRequestHeader("X-Token", tokenDoc);
         xhr.setRequestHeader("X-Nombre", encodeURIComponent(item.nombre));
         xhr.setRequestHeader("X-Id", item.id);
+        xhr.setRequestHeader("X-Desde", String(desde));
+        xhr.setRequestHeader("X-Bytes", String(item.bytes));
 
         xhr.upload.onprogress = (evento) => {
             mandarSenal({
                 type: "progreso",
                 id: item.id,
-                recibidos: evento.loaded,
-                total: evento.total || item.bytes,
+                recibidos: desde + evento.loaded,
+                total: item.bytes,
             });
         };
 
@@ -695,7 +745,7 @@ function subirPorRespaldo(item) {
                 });
             }
             if (xhr.status === 413) {
-                return resolver({ ok: false, error: "grande", mensaje: "«" + item.nombre + "» pesa más de lo que el túnel acepta." });
+                return resolver({ ok: false, error: "grande", mensaje: "«" + item.nombre + "» no entra por el túnel." });
             }
             if (xhr.status === 415) {
                 return resolver({ ok: false, error: "tipo", mensaje: "«" + item.nombre + "» no es de un tipo que el túnel acepte." });
@@ -704,7 +754,7 @@ function subirPorRespaldo(item) {
         };
         xhr.onerror = () => resolver({ ok: false, error: "red", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
 
-        xhr.send(item.archivo);
+        xhr.send(item.archivo.slice(desde));
     });
 }
 
@@ -737,7 +787,15 @@ async function enviarElegidos() {
         // El id lo pone el celular y viaja en los dos caminos: así un archivo es
         // una sola fila, vaya por donde vaya.
         item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
-        mandarSenal({ type: "item", id: item.id, nombre: item.nombre, tipo: item.tipo, bytes: item.bytes });
+        mandarSenal({
+            type: "item",
+            id: item.id,
+            nombre: item.nombre,
+            tipo: item.tipo,
+            bytes: item.bytes,
+            pieza: PIEZA_BYTES,
+            total: piezasDe(item.bytes, PIEZA_BYTES).cantidad,
+        });
 
         let salio = false;
         try {
@@ -751,7 +809,7 @@ async function enviarElegidos() {
         }
 
         avisoCliente("Mandando «" + item.nombre + "» por el respaldo…");
-        const resultado = await subirPorRespaldo(item);
+        const resultado = await subirPorRespaldo(item, 0);
         if (resultado.ok) {
             enviados++;
         } else {
@@ -779,6 +837,7 @@ async function enviarElegidos() {
 function arrancarCliente(codigo) {
     el("pantalla-pc").hidden = true;
     el("pantalla-cliente").hidden = false;
+    codigoActual = codigo;
     avisoCliente("Elegí los archivos y tocá Enviar. Podés elegir de nuevo para sumar más.");
 
     socketDoc = abrirSocket(codigo, "emisor", (mensaje) => {
