@@ -20,6 +20,8 @@ var clienteConectado = false;
 var recibidos = new Map(); // id → { nombre, tipo, bytes, pieza, piezas, blob, url, estado, … }
 // El frame binario que sigue a un aviso `pieza` es la pieza anunciada.
 var piezaEnCurso = null;
+// El archivo que se está mandando, para poder retomarlo si se corta.
+var enCurso = null;
 var elegidos = [];
 var seleccionado = null;
 var intentosDoc = 0;
@@ -49,15 +51,26 @@ function alMensajeMostrador(mensaje) {
     }
     if (mensaje.type === "estado") {
         clienteConectado = !!mensaje.emisor;
-        // Si el que mandaba se fue, lo que estaba en la cola no va a llegar
-        // nunca: se marca en vez de dejarlo como fantasma.
+        // Si el que mandaba se fue, la fila NO se da por perdida: las piezas que
+        // llegaron sirven para retomar, y el vigilante de 45 s es el que decide.
         if (!clienteConectado) {
             for (const fila of recibidos.values()) {
-                if (fila.estado === "esperando") fila.estado = "error";
+                if (fila.estado === "esperando") fila.ultimoMovimiento = Date.now();
             }
-            pintarLista();
         }
         pintarEscenarioDocs();
+        return;
+    }
+    if (mensaje.type === "pidofalta") {
+        const fila = recibidos.get(mensaje.id);
+        if (!fila) return;
+        const cantidad = piezasDe(fila.bytes, fila.pieza).cantidad;
+        const falta = primeraFaltante(new Set(fila.piezas.keys()), cantidad);
+        mandarSenal({
+            type: "falta",
+            id: mensaje.id,
+            desde: Math.min(falta * fila.pieza, fila.bytes),
+        });
         return;
     }
     if (mensaje.type === "item") {
@@ -284,7 +297,7 @@ setInterval(() => {
     let cambio = false;
     for (const fila of recibidos.values()) {
         if (fila.estado === "listo" || fila.estado === "error") continue;
-        if (ahora - fila.ultimoMovimiento > 20000) {
+        if (ahora - fila.ultimoMovimiento > 45000) {
             fila.estado = "error";
             cambio = true;
         }
@@ -759,6 +772,10 @@ function subirPorRespaldo(item, desde = 0) {
             resolver({ ok: false, error: "otro", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
         };
         xhr.onerror = () => resolver({ ok: false, error: "red", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
+        // Un corte de red aborta el pedido sin pasar por `error`: hay que
+        // escucharlo, o el envío queda colgado para siempre.
+        xhr.onabort = () => resolver({ ok: false, error: "red", mensaje: "Se cortó el envío de «" + item.nombre + "»." });
+        xhr.ontimeout = () => resolver({ ok: false, error: "red", mensaje: "Se cortó el envío de «" + item.nombre + "»." });
 
         xhr.send(item.archivo.slice(desde));
     });
@@ -790,39 +807,7 @@ async function enviarElegidos() {
         intentados++;
         avisoCliente("Mandando «" + item.nombre + "»…" + avisoPantalla);
 
-        // El id lo pone el celular y viaja en los dos caminos: así un archivo es
-        // una sola fila, vaya por donde vaya.
-        item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
-        mandarSenal({
-            type: "item",
-            id: item.id,
-            nombre: item.nombre,
-            tipo: item.tipo,
-            bytes: item.bytes,
-            pieza: PIEZA_BYTES,
-            total: piezasDe(item.bytes, PIEZA_BYTES).cantidad,
-        });
-
-        let salio = false;
-        try {
-            salio = await enviarPorP2P(item);
-        } catch {
-            salio = false;
-        }
-        if (salio) {
-            enviados++;
-            continue;
-        }
-
-        avisoCliente("Mandando «" + item.nombre + "» por el respaldo…");
-        const resultado = await subirPorRespaldo(item, 0);
-        if (resultado.ok) {
-            enviados++;
-        } else {
-            // Si no llegó, la fila del mostrador no puede quedar mintiendo.
-            mandarSenal({ type: "item-error", id: item.id, motivo: resultado.error });
-            avisoCliente(resultado.mensaje);
-        }
+        if (await mandarItem(item)) enviados++;
     }
 
     soltarVigilia();
@@ -840,29 +825,160 @@ async function enviarElegidos() {
     pintarElegidos();
 }
 
+// El id lo pone el celular y viaja en los dos caminos: así un archivo es una
+// sola fila, vaya por donde vaya.
+function anunciar(item) {
+    item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
+    mandarSenal({
+        type: "item",
+        id: item.id,
+        nombre: item.nombre,
+        tipo: item.tipo,
+        bytes: item.bytes,
+        pieza: PIEZA_BYTES,
+        total: piezasDe(item.bytes, PIEZA_BYTES).cantidad,
+    });
+}
+
+// Manda un archivo: primero el camino directo, después el respaldo.
+async function mandarItem(item) {
+    enCurso = item;
+    anunciar(item);
+
+    let salio = false;
+    try {
+        salio = await enviarPorP2P(item);
+    } catch {
+        salio = false;
+    }
+
+    if (!salio) salio = await seguirPorRespaldo(item, 0);
+    enCurso = null;
+    return salio;
+}
+
+// El respaldo, con reintentos. Cada intento pregunta a la PC dónde quedó y sigue
+// desde ahí: un corte no cuesta el archivo entero.
+async function seguirPorRespaldo(item, desde) {
+    let punto = desde;
+
+    for (let intento = 1; intento <= 3; intento++) {
+        if (punto >= item.bytes) return true;
+
+        avisoCliente("Mandando «" + item.nombre + "» por el respaldo…" + (intento > 1 ? " (retomando)" : ""));
+        const resultado = await subirPorRespaldo(item, punto);
+        if (resultado.ok) return true;
+
+        // Si no llegó, la fila del mostrador no puede quedar mintiendo.
+        mandarSenal({ type: "item-error", id: item.id, motivo: resultado.error });
+
+        if (resultado.error === "tipo" || resultado.error === "grande") {
+            avisoCliente(resultado.mensaje);
+            return false;
+        }
+
+        const falta = await pedirFalta(item.id);
+        if (falta === null) {
+            avisoCliente(resultado.mensaje);
+            return false;
+        }
+
+        // Si la PC ya tiene todo, no hay nada más que mandar.
+        if (falta >= item.bytes) return true;
+        punto = falta;
+    }
+
+    avisoCliente("No se pudo mandar «" + item.nombre + "». Probá otra vez.");
+    return false;
+}
+
+// Pregunta a la PC desde qué byte seguir. Si no contesta, es que no hay con quién.
+let faltaPendiente = null;
+
+function pedirFalta(id) {
+    return new Promise((resolver) => {
+        faltaPendiente = resolver;
+        mandarSenal({ type: "pidofalta", id });
+        setTimeout(() => {
+            if (faltaPendiente === resolver) {
+                faltaPendiente = null;
+                resolver(null);
+            }
+        }, 2000);
+    });
+}
+
+// Al volver la conexión, si había un archivo a medias se retoma donde quedó.
+function retomarPendientes() {
+    if (!enCurso || enCurso.retomando) return;
+    const item = enCurso;
+    item.retomando = true;
+
+    pedirFalta(item.id).then(async (falta) => {
+        item.retomando = false;
+        if (falta === null || enCurso !== item) return;
+        if (falta >= item.bytes) {
+            enCurso = null;
+            avisoCliente("Listo: «" + item.nombre + "» ya está en la computadora.");
+            return;
+        }
+        if (await seguirPorRespaldo(item, falta)) {
+            enCurso = null;
+            avisoCliente("Listo: «" + item.nombre + "» ya está en la computadora.");
+        }
+    });
+}
+
 function arrancarCliente(codigo) {
     el("pantalla-pc").hidden = true;
     el("pantalla-cliente").hidden = false;
     codigoActual = codigo;
     avisoCliente("Elegí los archivos y tocá Enviar. Podés elegir de nuevo para sumar más.");
+    conectarCliente(codigo);
+}
 
+// El celular puede perder señal y volver: en vez de darlo por perdido, se
+// reconecta (unos intentos) y retoma lo que estaba mandando.
+var reintentosCliente = 0;
+
+function conectarCliente(codigo) {
     socketDoc = abrirSocket(codigo, "emisor", (mensaje) => {
         if (mensaje.type === "bienvenida") {
+            reintentosCliente = 0;
             tokenDoc = mensaje.token;
             pintarElegidos();
+            retomarPendientes();
+            return;
+        }
+        if (mensaje.type === "falta") {
+            if (faltaPendiente) {
+                const resolver = faltaPendiente;
+                faltaPendiente = null;
+                resolver(mensaje.desde);
+            }
             return;
         }
         alSenalCliente(mensaje);
     });
 
     socketDoc.onclose = (evento) => {
-        el("btn-elegir").disabled = true;
-        el("btn-enviar").disabled = true;
-        avisoCliente(
-            evento.code === 4001
-                ? "Esta sesión ya tiene un cliente conectado. Pedile a la computadora un código nuevo."
-                : "La computadora se desconectó. Volvé a escanear el código."
-        );
+        if (evento.code === 4001) {
+            el("btn-elegir").disabled = true;
+            el("btn-enviar").disabled = true;
+            avisoCliente("Esta sesión ya tiene un cliente conectado. Pedile a la computadora un código nuevo.");
+            return;
+        }
+
+        if (reintentosCliente >= 5) {
+            el("btn-elegir").disabled = true;
+            el("btn-enviar").disabled = true;
+            avisoCliente("La computadora se desconectó. Volvé a escanear el código.");
+            return;
+        }
+
+        reintentosCliente++;
+        avisoCliente("Se cortó la conexión. Reintentando…");
+        setTimeout(() => conectarCliente(codigo), 1500);
     };
 }
 

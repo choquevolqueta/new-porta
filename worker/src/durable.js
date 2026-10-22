@@ -39,6 +39,8 @@ const json = (cuerpo, status) =>
 const TIPOS_REENVIADOS = new Set([
   "item", "progreso", "item-ok", "item-error",
   "oferta", "respuesta", "candidato",
+  // Reanudar: el celular pregunta dónde quedó y la PC contesta.
+  "pidofalta", "falta",
 ]);
 
 // Un pedido rechazado con el cuerpo sin leer deja al runtime avisando: se
