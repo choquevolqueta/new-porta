@@ -98,3 +98,11 @@ test("un total declarado en cero se rechaza aunque haya primeros bytes", () => {
   assert.deepEqual(puedeRecibirArchivo(MODOS.DOCUMENTOS, "application/pdf", PDF4, 0),
     { ok: false, error: "vacio" });
 });
+
+test("reanudado no se comprueba la firma: los bytes no son la cabecera", () => {
+  const mitad = new Uint8Array([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77]);
+  // Con `desde > 0` el tramo empieza en el medio del archivo: pedirle la firma
+  // rechazaría el 100% de los reintentos.
+  assert.deepEqual(puedeRecibirArchivo(MODOS.DOCUMENTOS, "video/mp4", mitad, 1024, 524288), { ok: true });
+  assert.deepEqual(puedeRecibirArchivo(MODOS.DOCUMENTOS, "video/mp4", mitad, 1024), { ok: false, error: "tipo" });
+});

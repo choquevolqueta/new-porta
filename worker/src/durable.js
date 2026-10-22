@@ -244,10 +244,18 @@ export class Sesion {
     }
     if (!mensaje || typeof mensaje !== "object") return;
 
+    // La actividad del camino directo: acá no pasan bytes por el Worker, así que
+    // estos mensajes son la única señal de vida. Sin esto, una subida de siete
+    // minutos muere cuando vence la sesión.
+    if (mensaje.type === "progreso" || mensaje.type === "item" || mensaje.type === "pidofalta") {
+      this.tocarActividad();
+    }
+
     // La confirmación de la PC es para el objeto, no para el celular: es lo que
-    // abre la ventana de envío.
+    // abre la ventana de envío. Y solo la PC confirma: si el emisor pudiera
+    // hacerlo, abriría la ventana que este protocolo existe para cerrar.
     if (mensaje.type === "confirmo") {
-      this.registrarConfirmo(mensaje);
+      if (rol === "pc") this.registrarConfirmo(mensaje);
       return;
     }
 
@@ -257,12 +265,28 @@ export class Sesion {
     this.enviar(destino, mensaje);
   }
 
+  // La sesión se toca con throttle: escribir almacenamiento en cada mensaje de
+  // progreso, en medio de una subida, es ruido al pedo. La alarma se reprograma
+  // sola cuando despierta y ve que la sesión sigue viva.
+  tocarActividad() {
+    const ahora = Date.now();
+    // El intervalo tiene que ser más corto que el vencimiento: con el TTL de
+    // producción son 5 s, con uno corto de test baja con él.
+    const cada = Math.min(5000, Math.max(200, this.ttl / 4));
+    if (ahora - (this.ultimoToque || 0) < cada) return;
+    this.ultimoToque = ahora;
+    tocarSesion(this.sesion, ahora);
+  }
+
   registrarConfirmo(mensaje) {
     const transferencia = this.transferencias.get(mensaje.id);
     if (!transferencia) return;
     const indice = Number(mensaje.indice);
     if (!Number.isFinite(indice)) return;
-    transferencia.confirmado = Math.max(transferencia.confirmado, indice);
+    // El índice no puede pasarse del archivo: un número inventado abriría la
+    // ventana de golpe.
+    const maximo = Math.ceil(transferencia.total / PIEZA_BYTES) - 1;
+    transferencia.confirmado = Math.max(transferencia.confirmado, Math.min(indice, maximo));
     transferencia.despertar?.();
     transferencia.despertar = null;
   }
@@ -270,7 +294,10 @@ export class Sesion {
   // Espera a que la ventana se abra. Si la PC no confirma en 20 s, se corta: no
   // se queda colgado para siempre.
   async esperarTurno(transferencia, indice) {
-    if (indice - transferencia.confirmado < VENTANA) return;
+    if (indice - transferencia.confirmado < VENTANA) {
+      if (!this.pc) throw new Error("sin-pc");
+      return;
+    }
     await new Promise((resolver, rechazar) => {
       const reloj = setTimeout(() => {
         transferencia.despertar = null;
@@ -281,6 +308,8 @@ export class Sesion {
         resolver();
       };
     });
+    // Si la PC se fue mientras esperábamos, no hay a quién entregarle.
+    if (!this.pc) throw new Error("sin-pc");
     return this.esperarTurno(transferencia, indice);
   }
 
@@ -289,6 +318,12 @@ export class Sesion {
       if (this.pc !== servidor) return;
       this.pc = null;
       if (this.sesion) this.sesion.pc = false;
+      // Las transferencias que estaban esperando confirmación no tienen a quién
+      // entregarle nada: se despiertan para que corten en el acto.
+      for (const transferencia of this.transferencias.values()) {
+        transferencia.despertar?.();
+        transferencia.despertar = null;
+      }
       // Sin PC no hay destino: el celular se entera por el cierre, no por un
       // mensaje que ya nadie podría entregar.
       const cel = this.emisor;

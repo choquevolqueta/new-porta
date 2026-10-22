@@ -244,6 +244,98 @@ test("el respaldo acepta el tope: 50 MiB en piezas de 1 MiB", async () => {
   await cerrar(pc);
 });
 
+test("reconectar el emisor en documentos no cambia su token", async () => {
+  const codigo = await nuevaSesion("documentos");
+  const pc = await abrir(`/ws/${codigo}?rol=pc`);
+  await proximo(pc); // bienvenida
+  await proximo(pc); // estado inicial
+  const { ws: cel, token } = await abrirEmisor(codigo);
+  await cerrar(cel);
+  await proximo(pc); // estado sin emisor
+
+  const { token: token2 } = await abrirEmisor(codigo);
+  assert.equal(token2, token, "el token vive con la sesión, para poder reanudar");
+
+  await cerrar(pc);
+});
+
+test("reanudar con X-Desde completa el archivo", async () => {
+  const { codigo, pc, tokenEmisor, cel } = await sesionLista();
+  const bytes = conTamano(3 * PIEZA + 500);
+  const id = "reanudado";
+  const corte = 2 * PIEZA; // frontera de pieza, como un corte real
+
+  const primera = await subir(codigo, tokenEmisor, bytes.slice(0, corte), "x.pdf", "application/pdf",
+    { id, desde: 0, total: bytes.length });
+  assert.equal(primera.status, 200);
+  await proximo(pc); // fin de la primera parte
+
+  const segunda = await subir(codigo, tokenEmisor, bytes.slice(corte), "x.pdf", "application/pdf",
+    { id, desde: corte, total: bytes.length });
+  assert.equal(segunda.status, 200);
+  assert.deepEqual(await proximo(pc), { type: "fin", id });
+  assert.deepEqual(armar(pc), bytes, "las dos partes armadas son el archivo");
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
+test("si la PC se va a mitad, la subida no dice que salió bien", async () => {
+  const codigo = await nuevaSesion("documentos");
+  const pc = await abrir(`/ws/${codigo}?rol=pc`); // sin autoConfirmar
+  await proximo(pc); // bienvenida
+  await proximo(pc); // estado inicial
+  const { ws: cel, token } = await abrirEmisor(codigo);
+  await proximo(pc); // estado con el emisor
+
+  // La PC se va apenas le llega la primera pieza.
+  let salio = false;
+  pc.addEventListener("message", (evento) => {
+    if (typeof evento.data === "string" || salio) return;
+    salio = true;
+    cerrar(pc);
+  });
+
+  const bytes = conTamano(20 * PIEZA);
+  const respuesta = await subir(codigo, token, bytes, "x.pdf", "application/pdf", { id: "sin-destino" });
+  assert.notEqual(respuesta.status, 200, "no puede decir que salió bien");
+
+  await cerrar(cel);
+});
+
+test("un confirmo del emisor no abre la ventana de la PC", async () => {
+  // El emisor tiene el código de la sesión: si pudiera confirmarse a sí mismo,
+  // abriría la ventana de memoria que el protocolo existe para cerrar.
+  const codigo = await nuevaSesion("documentos");
+  const pc = await abrir(`/ws/${codigo}?rol=pc`); // sin autoConfirmar
+  await proximo(pc); // bienvenida
+  await proximo(pc); // estado inicial
+  const { ws: cel, token } = await abrirEmisor(codigo);
+  await proximo(pc); // estado con el emisor
+
+  const id = "ventana";
+  const bytes = conTamano(5 * PIEZA + 100);
+  const envio = subir(codigo, token, bytes, "x.pdf", "application/pdf", { id });
+
+  await new Promise((r) => setTimeout(r, 700)); // las cuatro de la ventana ya salieron
+  cel.send(JSON.stringify({ type: "confirmo", id, indice: 99999 }));
+
+  const despues = await Promise.race([
+    envio.then(() => "terminó"),
+    new Promise((r) => setTimeout(() => r("sigue esperando"), 1200)),
+  ]);
+  assert.equal(despues, "sigue esperando", "el confirmo del emisor no cuenta");
+
+  // La PC confirma de verdad y ahí sí termina.
+  for (let i = 0; i < Math.ceil(bytes.length / PIEZA); i++) {
+    pc.send(JSON.stringify({ type: "confirmo", id, indice: i }));
+  }
+  assert.equal((await envio).status, 200);
+
+  await cerrar(cel);
+  await cerrar(pc);
+});
+
 test("un total anunciado mayor al tope se rechaza sin leer el cuerpo", async () => {
   const { codigo, pc, tokenEmisor, cel } = await sesionLista();
 

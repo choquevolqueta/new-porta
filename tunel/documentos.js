@@ -18,8 +18,10 @@ var socketDoc = null;
 var tokenDoc = null;
 var clienteConectado = false;
 var recibidos = new Map(); // id → { nombre, tipo, bytes, pieza, piezas, blob, url, estado, … }
-// El frame binario que sigue a un aviso `pieza` es la pieza anunciada.
-var piezaEnCurso = null;
+// El frame binario que sigue a un aviso `pieza` es la pieza anunciada. Hay uno
+// por transporte: el WebSocket y el canal de datos pueden cruzarse.
+var piezaPorWs = null;
+var piezaPorCanal = null;
 // El archivo que se está mandando, para poder retomarlo si se corta.
 var enCurso = null;
 // Lo que se recibió en la sesión: vive en la memoria del navegador.
@@ -82,7 +84,7 @@ function alMensajeMostrador(mensaje) {
     if (mensaje.type === "pieza") {
         // La cabecera dice qué pieza es; el frame binario que viene atrás trae
         // los bytes. Van en orden, así que alcanza con recordar la última.
-        piezaEnCurso = { id: mensaje.id, indice: mensaje.indice };
+        piezaPorWs = { id: mensaje.id, indice: mensaje.indice };
         return;
     }
     if (mensaje.type === "fin") {
@@ -149,10 +151,10 @@ function conectarMostrador() {
     }
 
     socketDoc = abrirSocket(codigoActual, "pc", alMensajeMostrador, (bytes) => {
-        // El binario pertenece a la última pieza anunciada.
-        if (!piezaEnCurso) return;
-        const { id, indice } = piezaEnCurso;
-        piezaEnCurso = null;
+        // El binario pertenece a la última pieza anunciada por el WebSocket.
+        if (!piezaPorWs) return;
+        const { id, indice } = piezaPorWs;
+        piezaPorWs = null;
         agregarPieza(id, indice, new Uint8Array(bytes));
     });
     socketDoc.onclose = () => {
@@ -178,8 +180,14 @@ function conectarMostrador() {
 function agregarItem(mensaje) {
     if (recibidos.has(mensaje.id)) return;
 
-    // Lo que no puede entrar no se muestra como si hubiera entrado.
-    if (recibidos.size >= 20 || mensaje.bytes > MAX_ARCHIVO_BYTES) {
+    // La PC no cree los números del anuncio: con un `bytes` inventado, la lista
+    // se puede colgar armando millones de piezas.
+    const bytes = Number(mensaje.bytes);
+    if (!Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_ARCHIVO_BYTES) {
+        avisoMostrador("Se rechazó un archivo fuera de lo permitido.");
+        return;
+    }
+    if (recibidos.size >= 20) {
         avisoMostrador("Se rechazó un archivo fuera de lo permitido.");
         return;
     }
@@ -188,8 +196,8 @@ function agregarItem(mensaje) {
         id: mensaje.id,
         nombre: mensaje.nombre,
         tipo: mensaje.tipo,
-        bytes: mensaje.bytes,
-        pieza: mensaje.pieza || PIEZA_BYTES,
+        bytes,
+        pieza: PIEZA_BYTES,
         piezas: new Map(),
         bytesRecibidos: 0,
         blob: null,
@@ -212,6 +220,13 @@ function agregarItem(mensaje) {
 function agregarPieza(id, indice, bytes, confirmar) {
     const fila = recibidos.get(id);
     if (!fila || fila.estado === "listo") return;
+
+    // Una pieza fuera de rango o de largo distinto al anunciado no se guarda: el
+    // índice y el tamaño los fija el anuncio, no el que manda.
+    const cantidad = piezasDe(fila.bytes, fila.pieza).cantidad;
+    if (!Number.isInteger(indice) || indice < 0 || indice >= cantidad) return;
+    const esperado = Math.min(fila.pieza, fila.bytes - indice * fila.pieza);
+    if (bytes.length !== esperado) return;
 
     // Si la pieza ya estaba (un reintento la vuelve a mandar), no se cuenta dos
     // veces: el progreso y el total se miden por índice.
@@ -238,7 +253,8 @@ function agregarPieza(id, indice, bytes, confirmar) {
 // fila no puede decir "recibido".
 function cerrarItem(id) {
     const fila = recibidos.get(id);
-    if (!fila || fila.estado === "listo") return;
+    if (!fila) return false;
+    if (fila.estado === "listo") return true;
 
     const cantidad = piezasDe(fila.bytes, fila.pieza).cantidad;
     const faltan = primeraFaltante(new Set(fila.piezas.keys()), cantidad);
@@ -248,7 +264,12 @@ function cerrarItem(id) {
     if (faltan !== cantidad || total !== fila.bytes) {
         fila.estado = "error";
         avisoMostrador("Un archivo llegó incompleto: «" + fila.nombre + "».");
-    } else {
+        pintarLista();
+        if (seleccionado === id) pintarVista();
+        return false;
+    }
+
+    {
         const partes = [];
         for (let i = 0; i < cantidad; i++) partes.push(fila.piezas.get(i));
         fila.blob = new Blob(partes, { type: fila.tipo });
@@ -271,6 +292,7 @@ function cerrarItem(id) {
     pintarLista();
     if (seleccionado === id) pintarVista();
     pintarEscenarioDocs();
+    return true;
 }
 
 function marcarItem(id, estado) {
@@ -593,6 +615,7 @@ async function enviarPorP2P(item) {
         let confirmadas = 0;
         let despertar = null;
         let recibido = null;
+        let recibidoOk = false;
 
         const esperarVentana = (indice) => {
             if (indice - confirmadas < VENTANA_PIEZAS) return Promise.resolve();
@@ -619,7 +642,12 @@ async function enviarPorP2P(item) {
                 despertar = null;
                 return;
             }
-            if (dato.recibido === item.id) recibido?.();
+            if (dato.recibido === item.id) {
+                // La PC dice si la fila quedó completa: si no, el envío no salió
+                // bien y hay que caer al respaldo, no cantar "listo".
+                recibidoOk = dato.ok !== false;
+                recibido?.();
+            }
         };
 
         canal.onopen = async () => {
@@ -656,7 +684,7 @@ async function enviarPorP2P(item) {
                 });
                 // Se marca antes de cerrar: cerrar dispara el evento de cierre, y
                 // un cierre limpio no puede terminar contando como corte.
-                terminar(true);
+                terminar(recibidoOk);
                 try {
                     pc.close();
                 } catch {}
@@ -720,9 +748,9 @@ function prepararCanal(oferta) {
         canalEntrante.binaryType = "arraybuffer";
         canalEntrante.onmessage = (mensaje) => {
             if (typeof mensaje.data !== "string") {
-                if (!piezaEnCurso) return;
-                const { id, indice } = piezaEnCurso;
-                piezaEnCurso = null;
+                if (!piezaPorCanal) return;
+                const { id, indice } = piezaPorCanal;
+                piezaPorCanal = null;
                 // La confirmación vuelve por el mismo canal que los bytes.
                 agregarPieza(id, indice, new Uint8Array(mensaje.data), (idPieza, indicePieza) => {
                     try {
@@ -735,15 +763,15 @@ function prepararCanal(oferta) {
             try {
                 const dato = JSON.parse(mensaje.data);
                 if (dato && dato.type === "pieza") {
-                    piezaEnCurso = { id: dato.id, indice: dato.indice };
+                    piezaPorCanal = { id: dato.id, indice: dato.indice };
                     return;
                 }
                 if (dato && dato.fin) {
-                    cerrarItem(dato.fin);
-                    // Se le avisa al celular que llegó, para que pueda cerrar sin
-                    // cortar el último pedazo.
+                    const salioBien = cerrarItem(dato.fin);
+                    // Se le avisa al celular que llegó (y si llegó bien), para que
+                    // pueda cerrar sin cortar el último pedazo.
                     try {
-                        canalEntrante.send(JSON.stringify({ recibido: dato.fin }));
+                        canalEntrante.send(JSON.stringify({ recibido: dato.fin, ok: salioBien }));
                     } catch {}
                 }
             } catch {
@@ -767,6 +795,27 @@ function prepararCanal(oferta) {
 function subirPorRespaldo(item, desde = 0) {
     return new Promise((resolver) => {
         const xhr = new XMLHttpRequest();
+        let ultimoProgreso = Date.now();
+        let terminado = false;
+
+        const terminar = (resultado) => {
+            if (terminado) return;
+            terminado = true;
+            clearInterval(vigilante);
+            resolver(resultado);
+        };
+
+        // Si en 25 s no hubo un solo byte de progreso, el pedido se aborta: la
+        // radio del celular puede caerse sin avisar y el XHR quedaría pendiente
+        // hasta el timeout del sistema.
+        const vigilante = setInterval(() => {
+            if (Date.now() - ultimoProgreso > 25000) {
+                try {
+                    xhr.abort();
+                } catch {}
+            }
+        }, 5000);
+
         xhr.open("POST", API_BASE + "/subir/" + codigoActual);
         xhr.setRequestHeader("Content-Type", item.tipo);
         xhr.setRequestHeader("X-Token", tokenDoc);
@@ -776,6 +825,7 @@ function subirPorRespaldo(item, desde = 0) {
         xhr.setRequestHeader("X-Bytes", String(item.bytes));
 
         xhr.upload.onprogress = (evento) => {
+            ultimoProgreso = Date.now();
             mandarSenal({
                 type: "progreso",
                 id: item.id,
@@ -785,27 +835,27 @@ function subirPorRespaldo(item, desde = 0) {
         };
 
         xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) return resolver({ ok: true });
+            if (xhr.status >= 200 && xhr.status < 300) return terminar({ ok: true });
             if (xhr.status === 409) {
-                return resolver({
+                return terminar({
                     ok: false,
                     error: "sin-pc",
                     mensaje: "La computadora se desconectó. Probá de nuevo cuando esté.",
                 });
             }
             if (xhr.status === 413) {
-                return resolver({ ok: false, error: "grande", mensaje: "«" + item.nombre + "» no entra por el túnel." });
+                return terminar({ ok: false, error: "grande", mensaje: "«" + item.nombre + "» no entra por el túnel." });
             }
             if (xhr.status === 415) {
-                return resolver({ ok: false, error: "tipo", mensaje: "«" + item.nombre + "» no es de un tipo que el túnel acepte." });
+                return terminar({ ok: false, error: "tipo", mensaje: "«" + item.nombre + "» no es de un tipo que el túnel acepte." });
             }
-            resolver({ ok: false, error: "otro", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
+            terminar({ ok: false, error: "otro", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
         };
-        xhr.onerror = () => resolver({ ok: false, error: "red", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
+        xhr.onerror = () => terminar({ ok: false, error: "red", mensaje: "No se pudo mandar «" + item.nombre + "». Probá otra vez." });
         // Un corte de red aborta el pedido sin pasar por `error`: hay que
         // escucharlo, o el envío queda colgado para siempre.
-        xhr.onabort = () => resolver({ ok: false, error: "red", mensaje: "Se cortó el envío de «" + item.nombre + "»." });
-        xhr.ontimeout = () => resolver({ ok: false, error: "red", mensaje: "Se cortó el envío de «" + item.nombre + "»." });
+        xhr.onabort = () => terminar({ ok: false, error: "red", mensaje: "Se cortó el envío de «" + item.nombre + "»." });
+        xhr.ontimeout = () => terminar({ ok: false, error: "red", mensaje: "Se cortó el envío de «" + item.nombre + "»." });
 
         xhr.send(item.archivo.slice(desde));
     });
@@ -858,7 +908,9 @@ async function enviarElegidos() {
 // El id lo pone el celular y viaja en los dos caminos: así un archivo es una
 // sola fila, vaya por donde vaya.
 function anunciar(item) {
-    item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
+    // El id se conserva entre reintentos: si la fila sigue en la PC, tocar Enviar
+    // otra vez sigue desde donde quedó en vez de empezar de cero.
+    if (!item.id) item.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 16);
     mandarSenal({
         type: "item",
         id: item.id,
@@ -882,7 +934,12 @@ async function mandarItem(item) {
         salio = false;
     }
 
-    if (!salio) salio = await seguirPorRespaldo(item, 0);
+    if (!salio) {
+        // Antes de mandar por el respaldo se pregunta dónde quedó: si el canal
+        // directo entregó parte, no se sube de nuevo lo que ya llegó.
+        const falta = await pedirFalta(item.id);
+        salio = await seguirPorRespaldo(item, falta === null ? 0 : falta);
+    }
     enCurso = null;
     return salio;
 }
@@ -927,14 +984,19 @@ let faltaPendiente = null;
 
 function pedirFalta(id) {
     return new Promise((resolver) => {
-        faltaPendiente = resolver;
+        // Un pedido anterior esperando se resuelve con null: nunca queda una
+        // promesa colgada para siempre.
+        faltaPendiente?.(null);
+
+        const terminar = (valor) => {
+            if (faltaPendiente !== terminar) return;
+            faltaPendiente = null;
+            resolver(valor);
+        };
+
+        faltaPendiente = terminar;
         mandarSenal({ type: "pidofalta", id });
-        setTimeout(() => {
-            if (faltaPendiente === resolver) {
-                faltaPendiente = null;
-                resolver(null);
-            }
-        }, 2000);
+        setTimeout(() => terminar(null), 2000);
     });
 }
 
@@ -946,12 +1008,22 @@ function retomarPendientes() {
 
     pedirFalta(item.id).then(async (falta) => {
         item.retomando = false;
-        if (falta === null || enCurso !== item) return;
+        if (enCurso !== item) return;
+
+        if (falta === null) {
+            // No hay PC del otro lado: se dice, en vez de quedarse en
+            // "Reintentando…" para siempre.
+            enCurso = null;
+            avisoCliente("La computadora no está conectada. Pedile al mostrador que abra el túnel de nuevo.");
+            return;
+        }
+
         if (falta >= item.bytes) {
             enCurso = null;
             avisoCliente("Listo: «" + item.nombre + "» ya está en la computadora.");
             return;
         }
+
         if (await seguirPorRespaldo(item, falta)) {
             enCurso = null;
             avisoCliente("Listo: «" + item.nombre + "» ya está en la computadora.");
@@ -981,11 +1053,8 @@ function conectarCliente(codigo) {
             return;
         }
         if (mensaje.type === "falta") {
-            if (faltaPendiente) {
-                const resolver = faltaPendiente;
-                faltaPendiente = null;
-                resolver(mensaje.desde);
-            }
+            // El que esperaba la respuesta se encarga de resolverse una sola vez.
+            faltaPendiente?.(mensaje.desde);
             return;
         }
         alSenalCliente(mensaje);

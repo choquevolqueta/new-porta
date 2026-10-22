@@ -27,3 +27,34 @@ test("una sesión que nadie usó se muere y deja de aceptar cosas", async (t) =>
   const despues = await fetch(`${API}/upload/${codigo}`, { method: "POST", body: JPEG });
   assert.equal(despues.status, 404); // ya no existe
 });
+
+test("el progreso del camino directo mantiene viva la sesión", async (t) => {
+  const salud = await (await fetch(`${API}/health`)).json();
+  if (!(salud.ttl <= 60000)) {
+    t.skip(`el server tiene TTL de ${salud.ttl} ms: levantalo con --var TTL_SESION_MS:2500`);
+    return;
+  }
+
+  const codigo = (await (await fetch(`${API}/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modo: "documentos" }),
+  })).json()).codigo;
+
+  const ws = new WebSocket(`${API.replace(/^http/, "ws")}/ws/${codigo}?rol=emisor`);
+  const cierres = [];
+  ws.addEventListener("close", (evento) => cierres.push(evento.code));
+  await new Promise((res) => ws.addEventListener("open", res, { once: true }));
+
+  // Seis segundos con progreso cada 400 ms: más del doble del TTL. Es lo que
+  // manda el celular durante un envío directo, sin pasar por el Worker.
+  for (let i = 0; i < 15; i++) {
+    ws.send(JSON.stringify({ type: "progreso", id: "x", recibidos: i, total: 15 }));
+    await esperar(400);
+  }
+
+  assert.deepEqual(cierres, [], "la sesión no se cerró mientras había progreso");
+  assert.equal(ws.readyState, WebSocket.OPEN);
+  ws.close();
+  await esperar(200);
+});
