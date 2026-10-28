@@ -22,6 +22,12 @@ node_modules/
 __pycache__/
 *.pyc
 
+# Secretos locales: nunca al repo
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+
 # Estado local de wrangler (caché del runtime, no es parte del Worker)
 worker/.wrangler/
 
