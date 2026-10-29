@@ -33,7 +33,11 @@ test("normalizarCodigo aguanta lo que tipea una persona", () => {
   assert.equal(normalizarCodigo("9XK2M7Q"), "9XK2M7Q");
 });
 
-test("la sesión expira a los 10 minutos sin actividad", () => {
+test("la sesión por defecto dura 5 minutos", () => {
+  assert.equal(crearSesion(0).ttl, 5 * 60 * 1000);
+});
+
+test("la sesión expira a los 5 minutos sin actividad", () => {
   const t0 = 1_000_000;
   const s = crearSesion(t0);
   assert.equal(estaExpirada(s, t0 + TTL_SESION_MS - 1), false);

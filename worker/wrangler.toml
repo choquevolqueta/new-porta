@@ -21,7 +21,7 @@ tag = "v1"
 new_sqlite_classes = ["Sesion", "Limite"]
 
 [vars]
-TTL_SESION_MS = "600000"
+TTL_SESION_MS = "300000"
 # Lo que vive un archivo en el respaldo si nadie lo baja.
 TTL_RESPALDO_MS = "120000"
 
