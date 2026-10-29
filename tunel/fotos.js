@@ -58,6 +58,9 @@ function conectarComoPc(codigo) {
     socketPc = ws;
 
     ws.onmessage = (evento) => {
+        // Cada mensaje del servidor corre el reloj de la sesión, igual que el
+        // TTL deslizante del otro lado.
+        tocarSesionGuardada(almacenDeSesion(), Date.now());
         let mensaje;
         try {
             mensaje = JSON.parse(evento.data);
@@ -86,6 +89,7 @@ function reconectar(codigo) {
     }
     // Tres intentos fallidos: el código quedó viejo. Se pide uno nuevo.
     intentosReconexion = 0;
+    olvidarSesion(almacenDeSesion());
     arrancarComoPc();
 }
 
@@ -142,6 +146,18 @@ async function arrancarComoPc() {
     intentosReconexion = 0;
     pintarEstado(false);
 
+    const almacen = almacenDeSesion();
+    const recordada = leerSesionGuardada(almacen, Date.now(), VIDA_SESION_MS, "fotos");
+
+    // Recarga con la sesión todavía viva: se reusa el código. Crear otra
+    // gastaría un Durable Object entero por nada.
+    if (recordada) {
+        codigoActual = recordada;
+        mostrarCodigoPc();
+        conectarComoPc(codigoActual);
+        return;
+    }
+
     try {
         codigoActual = await crearSesion();
     } catch {
@@ -150,11 +166,16 @@ async function arrancarComoPc() {
         return;
     }
 
+    guardarSesion(almacen, codigoActual, Date.now(), "fotos");
+    mostrarCodigoPc();
+    conectarComoPc(codigoActual);
+}
+
+function mostrarCodigoPc() {
     const urlEmisor = PAGINA + "?s=" + codigoActual;
     el("codigo").textContent = codigoActual;
     el("qr-url").textContent = "¿No lee el código? Escribe esta dirección en el celular: " + urlEmisor;
     dibujarQr(urlEmisor);
-    conectarComoPc(codigoActual);
 }
 
 /* ------------------------------------------------- el celular emisor */

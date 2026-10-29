@@ -129,6 +129,18 @@ async function arrancarMostrador() {
     pintarEscenarioDocs();
     intentosDoc = 0;
 
+    const almacen = almacenDeSesion();
+    const recordada = leerSesionGuardada(almacen, Date.now(), VIDA_SESION_MS, "documentos");
+
+    // Recarga con la sesión todavía viva: se reusa el código en vez de crear
+    // otro Durable Object (cada sesión cuesta duración aunque no mueva bytes).
+    if (recordada) {
+        codigoActual = recordada;
+        mostrarCodigoDocs();
+        conectarMostrador();
+        return;
+    }
+
     try {
         codigoActual = await crearSesion("documentos");
     } catch {
@@ -137,11 +149,16 @@ async function arrancarMostrador() {
         return;
     }
 
+    guardarSesion(almacen, codigoActual, Date.now(), "documentos");
+    mostrarCodigoDocs();
+    conectarMostrador();
+}
+
+function mostrarCodigoDocs() {
     const urlCliente = PAGINA + "?s=" + codigoActual + "&m=documentos";
     el("codigo").textContent = codigoActual;
     el("qr-url").textContent = "¿No lee el código? Escribe esta dirección en el celular: " + urlCliente;
     dibujarQr(urlCliente);
-    conectarMostrador();
 }
 
 function conectarMostrador() {
@@ -150,7 +167,12 @@ function conectarMostrador() {
         socketDoc.close();
     }
 
-    socketDoc = abrirSocket(codigoActual, "pc", alMensajeMostrador, (bytes) => {
+    socketDoc = abrirSocket(codigoActual, "pc", (mensaje) => {
+        // La sesión guardada envejece con la actividad, igual que el TTL del
+        // servidor: así una recarga durante una transferencia no la pierde.
+        tocarSesionGuardada(almacenDeSesion(), Date.now());
+        alMensajeMostrador(mensaje);
+    }, (bytes) => {
         // El binario pertenece a la última pieza anunciada por el WebSocket.
         if (!piezaPorWs) return;
         const { id, indice } = piezaPorWs;
@@ -173,6 +195,7 @@ function conectarMostrador() {
             setTimeout(conectarMostrador, 1500);
             return;
         }
+        olvidarSesion(almacenDeSesion());
         arrancarMostrador();
     };
 }

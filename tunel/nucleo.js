@@ -68,6 +68,67 @@ async function crearSesion(modo) {
     return (await respuesta.json()).codigo;
 }
 
+/* -------------------------------------------------- sesión recordada */
+
+// La sesión vive 5 minutos en el servidor (TTL deslizante). Un F5 no tiene por
+// qué pedir un código nuevo: cada sesión cuesta duración de Durable Object
+// aunque no mueva un byte. Se guarda el código por pestaña y se reusa mientras
+// siga fresco; el guardado envejece con cada mensaje, igual que el servidor.
+var CLAVE_SESION_GUARDADA = "tunel.sesion";
+var VIDA_SESION_MS = 5 * 60 * 1000;
+
+// sessionStorage puede no existir o tirar (modo privado, file://). Si falla, el
+// túnel sigue funcionando: solo pierde el reuso.
+function almacenDeSesion() {
+    try {
+        return sessionStorage;
+    } catch {
+        return null;
+    }
+}
+
+function leerSesionGuardada(almacen, ahora, ttlMs, modo) {
+    if (!almacen) return null;
+    try {
+        const crudo = almacen.getItem(CLAVE_SESION_GUARDADA);
+        if (!crudo) return null;
+        const dato = JSON.parse(crudo);
+        if (!dato || typeof dato.codigo !== "string" || !dato.codigo) return null;
+        if (dato.modo !== modo) return null;
+        if (typeof dato.ts !== "number" || !Number.isFinite(dato.ts)) return null;
+        if (ahora - dato.ts >= ttlMs) return null;
+        return dato.codigo;
+    } catch {
+        return null;
+    }
+}
+
+function guardarSesion(almacen, codigo, ahora, modo) {
+    if (!almacen) return;
+    try {
+        almacen.setItem(CLAVE_SESION_GUARDADA, JSON.stringify({ codigo, ts: ahora, modo }));
+    } catch {}
+}
+
+function tocarSesionGuardada(almacen, ahora) {
+    if (!almacen) return;
+    try {
+        const crudo = almacen.getItem(CLAVE_SESION_GUARDADA);
+        if (!crudo) return;
+        const dato = JSON.parse(crudo);
+        if (!dato || typeof dato.codigo !== "string") return;
+        dato.ts = ahora;
+        almacen.setItem(CLAVE_SESION_GUARDADA, JSON.stringify(dato));
+    } catch {}
+}
+
+function olvidarSesion(almacen) {
+    if (!almacen) return;
+    try {
+        almacen.removeItem(CLAVE_SESION_GUARDADA);
+    } catch {}
+}
+
 // El mismo WebSocket para las dos pantallas: quien lo pide decide qué hacer con
 // cada mensaje que llega.
 function abrirSocket(codigo, rol, alMensaje, alBinario) {

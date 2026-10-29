@@ -158,6 +158,37 @@ assert.equal(contexto.primeraFaltante(new Set([0, 1]), 2), 2, "si están todas, 
 assert.equal(contexto.estanTodas(new Set([0, 1, 2]), 3), true);
 assert.equal(contexto.estanTodas(new Set([0, 2]), 3), false, "un hueco no es estar todas");
 
+// La sesión recordada en sessionStorage: un F5 no debe crear un Durable Object
+// nuevo. El TTL del servidor es deslizante, así que el guardado envejece con
+// cada mensaje; acá se prueba el contrato con un almacén falso.
+const almacen = () => {
+  const datos = new Map();
+  return {
+    getItem: (k) => (datos.has(k) ? datos.get(k) : null),
+    setItem: (k, v) => datos.set(k, String(v)),
+    removeItem: (k) => datos.delete(k),
+  };
+};
+
+const guardado = almacen();
+assert.equal(contexto.leerSesionGuardada(guardado, 1000, 5000, "fotos"), null, "sin nada guardado no hay sesión");
+contexto.guardarSesion(guardado, "ABCDEFGH", 1000, "fotos");
+assert.equal(contexto.leerSesionGuardada(guardado, 5999, 5000, "fotos"), "ABCDEFGH", "dentro del TTL se reusa");
+assert.equal(contexto.leerSesionGuardada(guardado, 6000, 5000, "fotos"), null, "vencida no se reusa");
+assert.equal(contexto.leerSesionGuardada(guardado, 2000, 5000, "documentos"), null, "otro modo no se reusa");
+contexto.tocarSesionGuardada(guardado, 5000);
+assert.equal(contexto.leerSesionGuardada(guardado, 9999, 5000, "fotos"), "ABCDEFGH", "tocar corre el reloj");
+contexto.olvidarSesion(guardado);
+assert.equal(contexto.leerSesionGuardada(guardado, 5001, 5000, "fotos"), null, "olvidar la borra");
+assert.equal(contexto.leerSesionGuardada(null, 0, 5000, "fotos"), null, "sin almacén no rompe");
+
+// Un guardado corrupto o incompleto no puede tumbar el arranque: se ignora.
+const roto = almacen();
+roto.setItem("tunel.sesion", "{no es json");
+assert.equal(contexto.leerSesionGuardada(roto, 0, 5000, "fotos"), null, "basura no rompe");
+roto.setItem("tunel.sesion", JSON.stringify({ ts: 0, modo: "fotos" }));
+assert.equal(contexto.leerSesionGuardada(roto, 0, 5000, "fotos"), null, "sin código no hay sesión");
+
 console.log(JSON.stringify({
   elegidos: suma.lista.map((f) => f.nombre),
   conHora: contexto.nombreArchivo(conHora),
