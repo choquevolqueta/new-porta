@@ -26,6 +26,16 @@ const falso = () => ({
   removeAttribute() {},
 });
 
+let ultimoSocket = null;
+class WebSocketFalso {
+  constructor(url) {
+    this.url = url;
+    ultimoSocket = this;
+  }
+  close() {}
+  send() {}
+}
+
 const contexto = {
   document: {
     addEventListener() {},
@@ -36,6 +46,7 @@ const contexto = {
   location: { hostname: "localhost", origin: "http://localhost:8080", pathname: "/tunel/", search: "" },
   URLSearchParams, URL, Blob, atob, btoa, console,
   Date, Math, Number, String, Object, JSON, setTimeout, clearTimeout,
+  WebSocket: WebSocketFalso,
 };
 
 vm.createContext(contexto);
@@ -197,6 +208,13 @@ assert.equal(contexto.decidirCierre(1006, 0, 3), "reintentar", "un corte de red 
 assert.equal(contexto.decidirCierre(1006, 2, 3), "reintentar", "todavía quedan intentos");
 assert.equal(contexto.decidirCierre(1006, 3, 3), "dormir", "sin intentos, duerme");
 assert.equal(contexto.decidirCierre(4001, 1, 1), "dormir", "documentos duerme tras su reintento");
+
+// Una conexión exitosa reinicia el presupuesto de reintentos.
+contexto.intentosReconexion = 2;
+contexto.conectarComoPc("ABCDEFGH");
+assert.ok(ultimoSocket, "conectarComoPc crea un WebSocket");
+ultimoSocket.onopen();
+assert.equal(contexto.intentosReconexion, 0, "una conexión exitosa reinicia los intentos");
 
 console.log(JSON.stringify({
   elegidos: suma.lista.map((f) => f.nombre),

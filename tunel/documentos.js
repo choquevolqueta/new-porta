@@ -182,6 +182,9 @@ function conectarMostrador() {
         piezaPorWs = null;
         agregarPieza(id, indice, new Uint8Array(bytes));
     });
+    socketDoc.onopen = () => {
+        intentosDoc = 0;
+    };
     socketDoc.onclose = (evento) => {
         // Lo que quedó a medias no se deja como fantasma: si el que mandaba se
         // fue, esas filas no van a terminar nunca.

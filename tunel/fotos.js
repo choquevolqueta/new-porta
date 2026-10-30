@@ -58,6 +58,9 @@ function conectarComoPc(codigo) {
 
     const ws = new WebSocket(API_BASE.replace(/^http/, "ws") + "/ws/" + codigo + "?rol=pc");
     socketPc = ws;
+    ws.onopen = () => {
+        intentosReconexion = 0;
+    };
 
     ws.onmessage = (evento) => {
         // Cada mensaje del servidor corre el reloj de la sesión, igual que el
