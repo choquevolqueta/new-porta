@@ -38,7 +38,7 @@ Dos Durable Objects con SQLite:
 - La PC confirma cada pieza y el emisor no se adelanta más de **4 piezas**.
 - Si se corta, la PC indica desde qué byte seguir (`X-Desde`) y el celular
   retoma sin volver a empezar.
-- La sesión vive **7 minutos deslizantes**: se renueva con cada progreso.
+- La sesión vive **5 minutos deslizantes**: se renueva con cada progreso.
 
 ## Límites
 
@@ -50,7 +50,7 @@ Dos Durable Objects con SQLite:
 | Archivos por sesión | 20 |
 | Pieza | 64 KB |
 | Sesiones por IP | 30 por hora |
-| TTL de sesión | 7 minutos |
+| TTL de sesión | 5 minutos |
 
 ## Seguridad
 
