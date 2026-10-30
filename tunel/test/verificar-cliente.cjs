@@ -170,6 +170,8 @@ const almacen = () => {
   };
 };
 
+assert.equal(contexto.VIDA_SESION_MS, 7 * 60 * 1000, "el cliente espera 7 minutos");
+
 const guardado = almacen();
 assert.equal(contexto.leerSesionGuardada(guardado, 1000, 5000, "fotos"), null, "sin nada guardado no hay sesión");
 contexto.guardarSesion(guardado, "ABCDEFGH", 1000, "fotos");
