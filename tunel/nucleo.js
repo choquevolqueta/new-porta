@@ -75,7 +75,7 @@ async function crearSesion(modo) {
 // aunque no mueva un byte. Se guarda el código por pestaña y se reusa mientras
 // siga fresco; el guardado envejece con cada mensaje, igual que el servidor.
 var CLAVE_SESION_GUARDADA = "tunel.sesion";
-var VIDA_SESION_MS = 7 * 60 * 1000;
+var VIDA_SESION_MS = 5 * 60 * 1000;
 
 // sessionStorage puede no existir o tirar (modo privado, file://). Si falla, el
 // túnel sigue funcionando: solo pierde el reuso.
