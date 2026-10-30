@@ -31,13 +31,15 @@ var textoDeEstado = null;
 function pintarEscenario() {
     const hayFoto = urlFoto !== null;
     el("bloque-foto").hidden = !hayFoto;
-    el("bloque-espera").hidden = hayFoto || !emisorConectado;
-    el("bloque-libre").hidden = hayFoto || emisorConectado;
+    el("bloque-espera").hidden = dormida || hayFoto || !emisorConectado;
+    el("bloque-libre").hidden = dormida || hayFoto || emisorConectado;
 
-    el("estado-texto").textContent = textoDeEstado ?? (
-        hayFoto ? "Foto recibida" : emisorConectado ? "Celular conectado" : "Esperando conexión"
+    el("estado-texto").textContent = dormida ? "Sesión terminada" : (
+        textoDeEstado ?? (
+            hayFoto ? "Foto recibida" : emisorConectado ? "Celular conectado" : "Esperando conexión"
+        )
     );
-    el("estado").classList.toggle("esta-conectado", emisorConectado || hayFoto);
+    el("estado").classList.toggle("esta-conectado", !dormida && (emisorConectado || hayFoto));
 }
 
 // El texto excepcional ("sin conexión, reintentando") dura hasta el próximo
@@ -71,26 +73,37 @@ function conectarComoPc(codigo) {
         else if (mensaje.type === "foto") mostrarFoto(mensaje);
     };
 
-    ws.onclose = () => {
-        if (socketPc === ws) reconectar(codigo);
+    ws.onclose = (evento) => {
+        if (socketPc === ws) reconectar(codigo, evento.code);
     };
 }
 
-function reconectar(codigo) {
+function reconectar(codigo, codigoCierre) {
     socketPc = null;
-    if (intentosReconexion < 3) {
-        const espera = 1000 * Math.pow(2, intentosReconexion);
-        intentosReconexion++;
-        pintarEstado(false, "Sin conexión, reintentando");
-        setTimeout(() => {
-            if (!socketPc) conectarComoPc(codigo);
-        }, espera);
+    if (decidirCierre(codigoCierre, intentosReconexion, 3) === "dormir") {
+        dormirSesion();
         return;
     }
-    // Tres intentos fallidos: el código quedó viejo. Se pide uno nuevo.
+    const espera = 1000 * Math.pow(2, intentosReconexion);
+    intentosReconexion++;
+    pintarEstado(false, "Sin conexión, reintentando");
+    setTimeout(() => {
+        if (!socketPc) conectarComoPc(codigo);
+    }, espera);
+}
+
+function dormirSesion() {
     intentosReconexion = 0;
+    emisorConectado = false;
+    textoDeEstado = null;
+    if (socketPc) {
+        socketPc.onclose = null;
+        socketPc.close();
+        socketPc = null;
+    }
     olvidarSesion(almacenDeSesion());
-    arrancarComoPc();
+    mostrarDormida();
+    pintarEscenario();
 }
 
 /* -------------------------------------------------- la foto recibida */
@@ -144,6 +157,7 @@ function borrarFoto() {
 
 async function arrancarComoPc() {
     intentosReconexion = 0;
+    mostrarQrVivo();
     pintarEstado(false);
 
     const almacen = almacenDeSesion();
