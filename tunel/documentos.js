@@ -42,10 +42,12 @@ var avisoPantalla = typeof navigator !== "undefined" && navigator.wakeLock
 function pintarEscenarioDocs() {
     const hay = recibidos.size > 0;
     el("bloque-lista").hidden = !hay;
-    el("bloque-libre-docs").hidden = hay || clienteConectado;
-    el("bloque-espera-docs").hidden = hay || !clienteConectado;
-    el("estado-texto").textContent = clienteConectado ? "Cliente conectado" : "Esperando conexión";
-    el("estado").classList.toggle("esta-conectado", clienteConectado || hay);
+    el("bloque-libre-docs").hidden = dormida || hay || clienteConectado;
+    el("bloque-espera-docs").hidden = dormida || hay || !clienteConectado;
+    el("estado-texto").textContent = dormida ? "Sesión terminada" : (
+        clienteConectado ? "Cliente conectado" : "Esperando conexión"
+    );
+    el("estado").classList.toggle("esta-conectado", !dormida && (clienteConectado || hay));
 }
 
 function alMensajeMostrador(mensaje) {
@@ -125,6 +127,7 @@ function prepararPantallaDocs() {
 async function arrancarMostrador() {
     el("pantalla-pc").hidden = false;
     el("pantalla-cliente").hidden = true;
+    mostrarQrVivo();
     prepararPantallaDocs();
     pintarEscenarioDocs();
     intentosDoc = 0;
@@ -179,7 +182,7 @@ function conectarMostrador() {
         piezaPorWs = null;
         agregarPieza(id, indice, new Uint8Array(bytes));
     });
-    socketDoc.onclose = () => {
+    socketDoc.onclose = (evento) => {
         // Lo que quedó a medias no se deja como fantasma: si el que mandaba se
         // fue, esas filas no van a terminar nunca.
         for (const fila of recibidos.values()) {
@@ -188,16 +191,29 @@ function conectarMostrador() {
         pintarLista();
 
         el("estado").classList.remove("esta-conectado");
-        el("estado-texto").textContent = "Sin conexión, reintentando";
-        if (intentosDoc === 0) {
-            // Un reintento con el mismo código antes de pedir uno nuevo.
-            intentosDoc = 1;
-            setTimeout(conectarMostrador, 1500);
+
+        if (decidirCierre(evento.code, intentosDoc, 1) === "dormir") {
+            dormirSesionDocs();
             return;
         }
-        olvidarSesion(almacenDeSesion());
-        arrancarMostrador();
+
+        intentosDoc = 1;
+        el("estado-texto").textContent = "Sin conexión, reintentando";
+        setTimeout(conectarMostrador, 1500);
     };
+}
+
+function dormirSesionDocs() {
+    intentosDoc = 0;
+    clienteConectado = false;
+    if (socketDoc) {
+        socketDoc.onclose = null;
+        socketDoc.close();
+        socketDoc = null;
+    }
+    olvidarSesion(almacenDeSesion());
+    mostrarDormida();
+    pintarEscenarioDocs();
 }
 
 function agregarItem(mensaje) {
