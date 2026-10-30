@@ -191,6 +191,13 @@ assert.equal(contexto.leerSesionGuardada(roto, 0, 5000, "fotos"), null, "basura 
 roto.setItem("tunel.sesion", JSON.stringify({ ts: 0, modo: "fotos" }));
 assert.equal(contexto.leerSesionGuardada(roto, 0, 5000, "fotos"), null, "sin código no hay sesión");
 
+// La decisión de dormir o reintentar según el cierre del WebSocket.
+assert.equal(contexto.decidirCierre(4002, 0, 3), "dormir", "la expiración duerme ya");
+assert.equal(contexto.decidirCierre(1006, 0, 3), "reintentar", "un corte de red reintenta");
+assert.equal(contexto.decidirCierre(1006, 2, 3), "reintentar", "todavía quedan intentos");
+assert.equal(contexto.decidirCierre(1006, 3, 3), "dormir", "sin intentos, duerme");
+assert.equal(contexto.decidirCierre(4001, 1, 1), "dormir", "documentos duerme tras su reintento");
+
 console.log(JSON.stringify({
   elegidos: suma.lista.map((f) => f.nombre),
   conHora: contexto.nombreArchivo(conHora),

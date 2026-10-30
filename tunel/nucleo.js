@@ -129,6 +129,32 @@ function olvidarSesion(almacen) {
     } catch {}
 }
 
+// Un cierre por expiración duerme ya. Cualquier otro cierre reintenta hasta
+// agotar los intentos; si no hay más, también duerme.
+function decidirCierre(codigo, intentos, maxIntentos) {
+    if (codigo === 4002) return "dormir";
+    return intentos < maxIntentos ? "reintentar" : "dormir";
+}
+
+var dormida = false;
+
+function mostrarDormida() {
+    dormida = true;
+    const qrVivo = el("qr-vivo");
+    const bloque = el("bloque-dormida");
+    if (qrVivo) qrVivo.hidden = true;
+    if (bloque) bloque.hidden = false;
+    el("estado").classList.remove("esta-conectado");
+}
+
+function mostrarQrVivo() {
+    dormida = false;
+    const qrVivo = el("qr-vivo");
+    const bloque = el("bloque-dormida");
+    if (qrVivo) qrVivo.hidden = false;
+    if (bloque) bloque.hidden = true;
+}
+
 // El mismo WebSocket para las dos pantallas: quien lo pide decide qué hacer con
 // cada mensaje que llega.
 function abrirSocket(codigo, rol, alMensaje, alBinario) {
@@ -303,6 +329,15 @@ function pedirCambioDeModo(modo) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    const btnReactivar = el("btn-reactivar");
+    if (btnReactivar) {
+        btnReactivar.addEventListener("click", () => {
+            olvidarSesion(almacenDeSesion());
+            if (MODO === "documentos") arrancarMostrador();
+            else arrancarComoPc();
+        });
+    }
+
     const aFotos = el("btn-modo-fotos");
     const aDocs = el("btn-modo-documentos");
     if (!aFotos || !aDocs) return;

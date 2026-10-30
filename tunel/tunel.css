@@ -316,6 +316,14 @@
     margin: 0;
 }
 
+.tunel-dormida {
+    max-width: 320px;
+}
+
+.tunel-dormida .tunel-btn {
+    margin-top: 18px;
+}
+
 .tunel-nota {
     margin-top: 10px !important;
     font-size: 0.65rem;

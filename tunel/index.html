@@ -26,11 +26,18 @@
 
             <div class="tunel-tablero">
                 <div class="tunel-lado-qr">
-                    <div class="tunel-qr">
-                        <canvas id="qr" width="320" height="320"></canvas>
+                    <div id="qr-vivo">
+                        <div class="tunel-qr">
+                            <canvas id="qr" width="320" height="320"></canvas>
+                        </div>
+                        <p class="tunel-codigo">Código <span id="codigo">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span></p>
+                        <p id="qr-url" class="tunel-url"></p>
                     </div>
-                    <p class="tunel-codigo">Código <span id="codigo">&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span></p>
-                    <p id="qr-url" class="tunel-url"></p>
+                    <div id="bloque-dormida" class="tunel-aviso-caja tunel-dormida" hidden>
+                        <p><strong>Sesión terminada</strong></p>
+                        <p class="tunel-nota">La sesión anterior ya no está disponible. Generá un código nuevo para seguir.</p>
+                        <button id="btn-reactivar" class="tunel-btn tunel-btn-rojo" type="button">Generar código nuevo</button>
+                    </div>
                 </div>
 
                 <div class="tunel-lado-estado">
